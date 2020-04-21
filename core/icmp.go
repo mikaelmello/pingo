@@ -69,12 +69,14 @@ func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<
 	for {
 		select {
 		case <-s.isFinished:
-			// if session is finished we must exit
+			// session has finished, end
 			return
 		default:
 			buffer := make([]byte, 1024)
 			if err := conn.SetReadDeadline(time.Now().Add(time.Second * 1)); err != nil {
 				fmt.Printf("Fatal error here")
+
+				// signal main loop and return
 				s.isFinished <- true
 				return
 			}
@@ -85,6 +87,7 @@ func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<
 					if neterr.Timeout() {
 						continue
 					} else {
+						// signal main loop and return
 						s.isFinished <- true
 						return
 					}

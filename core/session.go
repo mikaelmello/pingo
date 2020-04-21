@@ -127,24 +127,26 @@ func (s *Session) Start() error {
 		case <-timeout.C:
 			// timeout, onto the next request
 			println("Oops timeout")
+
+			if s.reachedRequestLimit() {
+				println(time.Now().String(), "Reached max of count")
+
+				s.isFinished <- true
+				wg.Wait()
+				return nil
+			}
+
 			interval.Reset(s.getIntervalDuration())
 			continue
 
 		case <-interval.C:
-			// checks if we have to stop somewhere and if we are already there
-			if s.isMaxCountActive() && s.totalSent >= s.settings.MaxCount {
-				println(time.Now().String(), "Reached max of count")
-				clearTimer(interval)
-				clearTimer(timeout)
-				continue
-			}
-
 			timeout.Reset(s.getTimeoutDuration())
 
 			println(time.Now().String(), "Sending echo", s.addr.String())
 			err = s.requestEcho(conn)
 			if err != nil {
 				println(time.Now().String(), "Echo failed %s", err.Error())
+
 				// this request already failed, clearing timer and resetting interval
 				interval.Reset(s.getIntervalDuration())
 				clearTimer(timeout)
@@ -165,12 +167,23 @@ func (s *Session) Start() error {
 				continue
 			}
 
+			// checks if we have to stop somewhere and if we are already there
+			if s.reachedRequestLimit() {
+				println(time.Now().String(), "Reached max of count")
+
+				s.isFinished <- true
+				wg.Wait()
+				return nil
+			}
+
 			// it is a match, clearing timeout and resetting interval for next request
 			clearTimer(timeout)
 			interval.Reset(s.getIntervalDuration())
 
 		case <-s.isFinished:
-			// we have been stopped
+			// we have been stopped by the polling
+			println("stopped")
+			s.isFinished <- true // in case isFinished has not been signaled (stop call for example)
 			wg.Wait()
 			return nil
 		}
@@ -212,4 +225,10 @@ func (s *Session) isDeadlineActive() bool {
 // Returns whether we should stop sending requests some time
 func (s *Session) isMaxCountActive() bool {
 	return s.settings.MaxCount > 0
+}
+
+// reachedRequestLimit whethher we ahave reached the request limit of this session
+func (s *Session) reachedRequestLimit() bool {
+	// checks if we have to stop somewhere and if we are already there
+	return s.isMaxCountActive() && s.totalSent >= s.settings.MaxCount
 }
