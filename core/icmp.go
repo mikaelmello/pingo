@@ -22,6 +22,8 @@ const (
 	icmpv6UnprivilegedNetwork = "udp6"
 )
 
+// requestEcho sends an ECHO_REQUEST to the address defined in the Session receiving as a parameter
+// the open connection with the target host
 func (s *Session) requestEcho(conn *icmp.PacketConn) error {
 
 	bigID := uint64ToBytes(s.bigID)     // ensure same source
@@ -30,7 +32,7 @@ func (s *Session) requestEcho(conn *icmp.PacketConn) error {
 
 	body := &icmp.Echo{
 		ID:   s.id,
-		Seq:  s.currentSequence,
+		Seq:  s.lastSequence + 1, // verify pair of request-replies
 		Data: data,
 	}
 
@@ -48,24 +50,28 @@ func (s *Session) requestEcho(conn *icmp.PacketConn) error {
 
 	var address net.Addr = s.address
 	if !s.settings.IsPrivileged {
+		// The provided dst must be net.UDPAddr when conn is a non-privileged
+		// datagram-oriented ICMP endpoint.
 		address = &net.UDPAddr{IP: s.address.IP, Zone: s.address.Zone}
 	}
+
 	_, err = conn.WriteTo(msgBytes, address)
+
+	// request failing or not, we must update these values
 	s.totalSent++
-	s.currentSequence++
+	s.lastSequence++
 
 	return err
 }
 
-func (s *Session) pollICMP(
-	wg *sync.WaitGroup,
-	conn *icmp.PacketConn,
-	recv chan<- *rawPacket,
-) {
+// pollICMP constantly polls the connection to receive and process any replies
+func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<- *rawPacket) {
 	defer wg.Done()
+
 	for {
 		select {
 		case <-s.isFinished:
+			// if session is finishehd we must exit
 			return
 		default:
 			buffer := make([]byte, 1024)
@@ -82,11 +88,13 @@ func (s *Session) pollICMP(
 				}
 			}
 
+			// sends the packet to the session so it can be checked and processed
 			recv <- &rawPacket{content: buffer, length: length, ttl: ttl}
 		}
 	}
 }
 
+// readFrom is a wrapper meant to read bytes from the connection stream and gather relevant info such as the ttl
 func (s *Session) readFrom(conn *icmp.PacketConn, bytes []byte) (int, int, error) {
 	var length int
 	var ttl int
@@ -108,6 +116,7 @@ func (s *Session) readFrom(conn *icmp.PacketConn, bytes []byte) (int, int, error
 	return length, ttl, err
 }
 
+// checkRawPacket whether the packet matches all requirements to be considered a successful reply
 func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
 	receivedTstp := time.Now()
 
@@ -121,27 +130,31 @@ func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
 		return false, nil
 	}
 
+	// cast body as icmp.Echo
 	switch body := m.Body.(type) {
 	case *icmp.Echo:
-		// // If we are privileged, we can match icmp.ID
-		// if p.network == "ip" {
-		// 	// Check if reply from same ID
-		// 	if pkt.ID != p.id {
-		// 		return nil
-		// 	}
-		// }
+
+		if s.settings.IsPrivileged {
+			// Check if reply from same ID
+			if body.ID != body.ID {
+				return false, nil
+			}
+		}
 
 		if len(body.Data) < dataLength {
 			return false, fmt.Errorf("Missing data, %d bytes out of %d", len(body.Data), dataLength)
 		}
 
+		// retrieve the info we serialized
 		bigID := bytesToUint64(body.Data[:8])
 		tstp := bytesToUnixNano(body.Data[8:])
 
-		if (body.Seq + 1) != s.currentSequence {
+		// checks if the body seq matches the seq of the last echo request
+		if body.Seq != s.lastSequence {
 			return false, nil
 		}
 
+		// checks if our unique identifier also matches
 		if bigID != s.bigID {
 			return false, nil
 		}
@@ -150,8 +163,10 @@ func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
 		if rtt > s.maxRtt {
 			s.maxRtt = rtt
 		}
-		s.rtts = append(s.rtts, rtt)
+		s.rtts = append(s.rtts, rtt) // stats purposes
+
 		s.totalReceived++
+
 		return true, nil
 	default:
 		return false, fmt.Errorf("Invalid body type: '%T'", body)
