@@ -1,17 +1,11 @@
 package core
 
-import (
-	"net"
+import "net"
 
-	"github.com/asaskevich/govalidator"
-)
+func isIPv4(ip net.IP) bool {
+	return ip.To4() != nil
+}
 
-// IsValidIPAddressOrHostname returns whether the provided input is a valid IP address or hostname
-func IsValidIPAddressOrHostname(address string) bool {
-	addr := net.ParseIP(address)
-	if addr != nil {
-		return true
-	}
-
-	return govalidator.IsDNSName(address)
+func isIPv6(ip net.IP) bool {
+	return len(ip) == net.IPv6len
 }
