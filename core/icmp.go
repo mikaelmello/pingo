@@ -116,10 +116,6 @@ func (s *Session) readFrom(conn *icmp.PacketConn, bytes []byte) (int, int, error
 		}
 	}
 
-	if err != nil {
-		err = fmt.Errorf("Error while reading bytes from connection: %w", err)
-	}
-
 	return length, ttl, err
 }
 
