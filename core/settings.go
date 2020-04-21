@@ -1,32 +1,33 @@
 package core
 
-// Settings contains all configurable properties of a ping session
+// Settings contains all configurable properties of a ping session.
 type Settings struct {
-	// IP Time to Live
+	// TTL is the set IP Time to Live
 	TTL int
-	// Max amount of ECHO_REQUEST packets sent before exiting.
+	// MaxCount is the max amount of ECHO_REQUEST packets sent before exiting.
 	MaxCount int
 
-	// Interval between a receival and the next send of an ECHO_REQUEST
+	// Interval is the interval in seconds between a receival and the next send of an ECHO_REQUEST.
 	Interval int
 
-	// Time to wait for a response, in seconds. The option affects only timeout in absence of any responses, otherwise ping waits for two RTTs.
+	// Timeout is the time in seconds to wait for a response.
+	// The option affects only timeout in absence of any responses, otherwise ping waits for two RTTs.
 	Timeout int
 
-	// Specify a timeout, in seconds, before ping exits regardless of how many packets have been sent or received.
+	// Deadline is the time in seconds before ping exits regardless of how many packets have been sent or received.
 	Deadline int
 
-	// Whether to use privileged mode (raw ICMP sockets) or not (datagram-oriented)
+	// IsPrivileged defines if privileged (raw ICMP sockets) or unprivileged (datagram-oriented) mode is used.
 	IsPrivileged bool
 
-	// Whether to log verbose output
+	// Verbose defines if verbose output is logged.
 	Verbose bool
 
-	// Whether to format the output in a modern way
+	// PrettyPrint defines if the output is formatted different from the normal ping.
 	PrettyPrint bool
 }
 
-// DefaultSettings returns the default settings for a ping session, change as you wish
+// DefaultSettings returns the default settings for a ping session, change as you wish.
 func DefaultSettings() *Settings {
 	return &Settings{
 		TTL:          64,

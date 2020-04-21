@@ -23,7 +23,7 @@ const (
 )
 
 // requestEcho sends an ECHO_REQUEST to the address defined in the Session receiving as a parameter
-// the open connection with the target host
+// the open connection with the target host.
 func (s *Session) requestEcho(conn *icmp.PacketConn) error {
 
 	bigID := uint64ToBytes(s.bigID)     // ensure same source
@@ -37,7 +37,7 @@ func (s *Session) requestEcho(conn *icmp.PacketConn) error {
 	}
 
 	msg := &icmp.Message{
-		Type: s.GetICMPType(),
+		Type: s.getICMPType(),
 		Code: echoCode,
 		Body: body,
 	}
@@ -64,7 +64,7 @@ func (s *Session) requestEcho(conn *icmp.PacketConn) error {
 	return err
 }
 
-// pollICMP constantly polls the connection to receive and process any replies
+// pollICMP constantly polls the connection to receive and process any replies.
 func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<- *rawPacket) {
 	defer wg.Done()
 
@@ -94,7 +94,7 @@ func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<
 	}
 }
 
-// readFrom is a wrapper meant to read bytes from the connection stream and gather relevant info such as the ttl
+// readFrom is a wrapper meant to read bytes from the connection stream and gather relevant info such as the ttl.
 func (s *Session) readFrom(conn *icmp.PacketConn, bytes []byte) (int, int, error) {
 	var length int
 	var ttl int
@@ -116,11 +116,12 @@ func (s *Session) readFrom(conn *icmp.PacketConn, bytes []byte) (int, int, error
 	return length, ttl, err
 }
 
-// checkRawPacket whether the packet matches all requirements to be considered a successful reply
+// checkRawPacket returns whether the packet matches all requirements to be considered a successful reply.
+// It also modifies the Session state by updating it with info from the packet if it is considered a successful reply.
 func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
 	receivedTstp := time.Now()
 
-	m, err := icmp.ParseMessage(s.GetProtocol(), raw.content)
+	m, err := icmp.ParseMessage(s.getProtocol(), raw.content)
 	if err != nil {
 		return false, fmt.Errorf("Error parsing ICMP message: %s", err.Error())
 	}
@@ -173,8 +174,8 @@ func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
 	}
 }
 
-// GetICMPType returns the appropriate type to be used in the ICMP request of this session
-func (s *Session) GetICMPType() icmp.Type {
+// getICMPType returns the appropriate type to be used in the ICMP request of this session.
+func (s *Session) getICMPType() icmp.Type {
 	if s.isIPv4 {
 		return ipv4.ICMPTypeEcho
 	}
@@ -182,8 +183,8 @@ func (s *Session) GetICMPType() icmp.Type {
 	return ipv6.ICMPTypeEchoRequest
 }
 
-// GetNetwork returns the appropriate ICMP network value of the session
-func (s *Session) GetNetwork() string {
+// getNetwork returns the appropriate ICMP network value of the session.
+func (s *Session) getNetwork() string {
 	if s.isIPv4 && s.settings.IsPrivileged {
 		return icmpPrivilegedNetwork
 	}
@@ -197,8 +198,8 @@ func (s *Session) GetNetwork() string {
 	return icmpv6UnprivilegedNetwork
 }
 
-// GetProtocol returns the appropriate ICMP protocol value of the session
-func (s *Session) GetProtocol() int {
+// getProtocol returns the appropriate ICMP protocol value of the session.
+func (s *Session) getProtocol() int {
 	if s.isIPv4 {
 		return icmpProtocol
 	}
@@ -206,9 +207,9 @@ func (s *Session) GetProtocol() int {
 	return icmpv6Protocol
 }
 
-// GetConnection returns a connection made to the session's address
-func (s *Session) GetConnection() (*icmp.PacketConn, error) {
-	conn, err := icmp.ListenPacket(s.GetNetwork(), "")
+// getConnection returns a connection made to the session's address.
+func (s *Session) getConnection() (*icmp.PacketConn, error) {
+	conn, err := icmp.ListenPacket(s.getNetwork(), "")
 
 	if err != nil {
 		return nil, fmt.Errorf("Could not listen to ICMP packets, error: %s", err.Error())

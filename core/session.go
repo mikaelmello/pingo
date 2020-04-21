@@ -12,16 +12,36 @@ import (
 type Session struct {
 	settings *Settings
 
-	id            int
-	bigID         uint64
-	lastSequence  int
-	totalSent     int
+	// id is the session id used in the echo body.
+	id int
+
+	// bigID is a larger id used in the payload of the echo body, meant to verify if an echo reply matches a session
+	// request with better accuracy.
+	bigID uint64
+
+	// lastSequence is the sequence number of the last sent echo request.
+	lastSequence int
+
+	// totalSent is the total amount of echo requests sent in this session.
+	totalSent int
+
+	// totalReceived is the total amount of matching echo replies received in the appropriate time in this session.
 	totalReceived int
-	maxRtt        int64
-	rtts          []int64
-	address       *net.IPAddr
-	isIPv4        bool
-	isFinished    chan bool
+
+	// maxRtt is the largest round-trip time among all successful replies of this session.
+	maxRtt int64
+
+	// rtts contains the round-trip times of all successful replies of this session.
+	rtts []int64
+
+	// address contains the net.Addr of the target host
+	address *net.IPAddr
+
+	// isIPv4 contains whether the stored address is IPv4 or not (IPv6)
+	isIPv4 bool
+
+	// isFinished is the channel that will signal the end of the session run.
+	isFinished chan bool
 }
 
 // NewSession creates a new Session
@@ -51,7 +71,7 @@ func NewSession(addr string, settings *Settings) (*Session, error) {
 func (s *Session) Start() error {
 	defer close(s.isFinished)
 
-	conn, err := s.GetConnection()
+	conn, err := s.getConnection()
 	if err != nil {
 		return err
 	}
