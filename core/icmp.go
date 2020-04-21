@@ -64,7 +64,7 @@ func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<
 	for {
 		select {
 		case <-s.isFinished:
-			// if session is finishehd we must exit
+			// if session is finished we must exit
 			return
 		default:
 			buffer := make([]byte, 1024)
@@ -75,7 +75,7 @@ func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<
 					if neterr.Timeout() {
 						continue
 					} else {
-						close(s.isFinished)
+						s.isFinished <- true
 						return
 					}
 				}

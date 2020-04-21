@@ -66,6 +66,7 @@ func NewSession(addr string, settings *Settings) (*Session, error) {
 		totalSent:     0,
 		totalReceived: 0,
 		maxRtt:        0,
+		isFinished:    make(chan bool, 1),
 		id:            r.Intn(math.MaxUint16),
 		bigID:         r.Uint64(),
 		isIPv4:        ipv4,
