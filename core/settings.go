@@ -16,7 +16,7 @@ type Settings struct {
 	// Specify a timeout, in seconds, before ping exits regardless of how many packets have been sent or received.
 	Deadline int
 
-	// Whether to run as a privileged user (using TCP) or unprivileged (using UDP)
+	// Whether to use privileged mode (raw ICMP sockets) or not (datagram-oriented)
 	IsPrivileged bool
 
 	// Whether to log verbose output
