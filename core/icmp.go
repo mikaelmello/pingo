@@ -101,10 +101,16 @@ func (b *Bundle) GetConnection() (*icmp.PacketConn, error) {
 	}
 
 	if b.isIPv4 {
+		if err := conn.IPv4PacketConn().SetTTL(b.ttl); err != nil {
+			return nil, fmt.Errorf("Could not set TTL in connection, error: %s", err.Error())
+		}
 		if err := conn.IPv4PacketConn().SetControlMessage(ipv4.FlagTTL, true); err != nil {
 			return nil, fmt.Errorf("Could not set control message in connection, error: %s", err.Error())
 		}
 	} else {
+		if err := conn.IPv6PacketConn().SetHopLimit(b.ttl); err != nil {
+			return nil, fmt.Errorf("Could not set control message in connection, error: %s", err.Error())
+		}
 		if err := conn.IPv6PacketConn().SetControlMessage(ipv6.FlagHopLimit, true); err != nil {
 			return nil, fmt.Errorf("Could not set control message in connection, error: %s", err.Error())
 		}
