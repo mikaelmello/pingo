@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/mikaelmello/pingo/core"
 	"github.com/spf13/cobra"
 )
@@ -14,16 +12,27 @@ var rootCmd = &cobra.Command{
 	Short: "pingo, adding Go to your ping",
 	Long:  "pingo is a Go implementation of the ping utility",
 	Args:  cobra.ExactArgs(1),
+	PreRun: func(cmd *cobra.Command, args []string) {
+		if cmd.Flags().Changed("ttl") {
+			settings.IsTTLDefault = false
+		}
+		if cmd.Flags().Changed("count") {
+			settings.IsMaxCountDefault = false
+		}
+		if cmd.Flags().Changed("deadline") {
+			settings.IsDeadlineDefault = false
+		}
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		session, err := core.NewSession(args[0], settings)
 		if err != nil {
-			fmt.Printf("Error %s\n", err.Error())
+			println(err.Error())
 			return
 		}
 
 		err = session.Start()
 		if err != nil {
-			fmt.Printf("Error %s\n", err.Error())
+			println(err.Error())
 			return
 		}
 
@@ -36,7 +45,7 @@ func init() {
 	rootCmd.Flags().IntVarP(&settings.TTL, "ttl", "t", settings.TTL, "Set the IP Time to Live.")
 	rootCmd.Flags().IntVarP(&settings.MaxCount, "count", "c", settings.MaxCount,
 		"Stop after sending count ECHO_REQUEST packets. With deadline option, ping waits for count ECHO_REPLY packets, until the timeout expires.")
-	rootCmd.Flags().IntVarP(&settings.Interval, "interval", "i", settings.Interval,
+	rootCmd.Flags().Float64VarP(&settings.Interval, "interval", "i", settings.Interval,
 		"Wait interval seconds between sending each packet. The default is to wait for one second between each packet normally.")
 	rootCmd.Flags().IntVarP(&settings.Timeout, "timeout", "W", settings.Timeout,
 		"Time to wait for a response, in seconds. The option affects only timeout in absence of any responses, otherwise ping waits for two RTTs.")

@@ -47,6 +47,11 @@ type Session struct {
 
 // NewSession creates a new Session
 func NewSession(address string, settings *Settings) (*Session, error) {
+	err := settings.validate()
+	if err != nil {
+		return nil, fmt.Errorf("invalid settings: %w", err)
+	}
+
 	ipaddr, err := net.ResolveIPAddr("ip", address)
 	if err != nil {
 		return nil, fmt.Errorf("error while resolving address %s: %w", address, err)
@@ -184,7 +189,7 @@ func (s *Session) getDeadlineDuration() time.Duration {
 
 // Returns the interval setting parsed as a duration in seconds
 func (s *Session) getIntervalDuration() time.Duration {
-	return time.Second * time.Duration(s.settings.Interval)
+	return time.Duration(float64(time.Second) * s.settings.Interval)
 }
 
 // Returns the appropriate value for the next timeout parsed as a duration in seconds
