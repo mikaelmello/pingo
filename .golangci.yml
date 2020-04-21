@@ -1,0 +1,69 @@
+# golangci-linter configuration
+# See https://github.com/golangci/golangci-lint#config-file for reference.
+#
+run:
+  timeout: 2m
+
+linters-settings:
+  depguard:
+    list-type: blacklist
+    include-go-root: true
+    packages:
+      - log # prefer github.com/sirupsen/logrus
+  gocyclo:
+    # minimal code complexity to report, 30 by default (but we recommend 10-20)
+    min-complexity: 50
+  golint:
+    # minimal confidence for issues, default is 0.8
+    min-confidence: 0
+  lll:
+    line-length: 140
+    tab-width: 4
+  maligned:
+    # print struct with more effective memory layout or not, false by default
+    suggest-new: true
+
+linters:
+  disable-all: true
+  enable:
+    - deadcode
+    - depguard
+    - errcheck
+    - gocyclo
+    - gofmt
+    - goimports
+    - golint
+    - govet
+    - ineffassign
+    - megacheck # gosimple, staticcheck and unused as a single linter
+    - misspell
+    - prealloc
+    - scopelint
+    - structcheck
+    - typecheck
+    - unconvert
+    - varcheck
+
+issues:
+  exclude:
+    - "should have a package comment"
+    - "Error return value of `w.Write` is not checked"
+
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gocyclo
+        - scopelint
+
+    - path: test/fixtures/
+      linters:
+        - golint
+
+    - path: migrations
+      linters:
+        - errcheck
+
+    - path: internal/filter/
+      linters:
+        - govet
