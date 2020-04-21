@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"net"
@@ -25,8 +26,8 @@ type Session struct {
 	// totalSent is the total amount of echo requests sent in this session.
 	totalSent int
 
-	// totalReceived is the total amount of matching echo replies received in the appropriate time in this session.
-	totalReceived int
+	// totalRecv is the total amount of matching echo replies received in the appropriate time in this session.
+	totalRecv int
 
 	// maxRtt is the largest round-trip time among all successful replies of this session.
 	maxRtt int64
@@ -34,8 +35,8 @@ type Session struct {
 	// rtts contains the round-trip times of all successful replies of this session.
 	rtts []int64
 
-	// address contains the net.Addr of the target host
-	address net.Addr
+	// addr contains the net.Addr of the target host
+	addr net.Addr
 
 	// isIPv4 contains whether the stored address is IPv4 or not (IPv6)
 	isIPv4 bool
@@ -45,33 +46,33 @@ type Session struct {
 }
 
 // NewSession creates a new Session
-func NewSession(addr string, settings *Settings) (*Session, error) {
-	ipaddr, err := net.ResolveIPAddr("ip", addr)
+func NewSession(address string, settings *Settings) (*Session, error) {
+	ipaddr, err := net.ResolveIPAddr("ip", address)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error while resolving address %s: %w", address, err)
 	}
 
-	var address net.Addr = ipaddr
+	var resAddr net.Addr = ipaddr
 	if !settings.IsPrivileged {
 		// The provided dst must be net.UDPAddr when conn is a non-privileged
 		// datagram-oriented ICMP endpoint.
-		address = &net.UDPAddr{IP: ipaddr.IP, Zone: ipaddr.Zone}
+		resAddr = &net.UDPAddr{IP: ipaddr.IP, Zone: ipaddr.Zone}
 	}
 
 	ipv4 := isIPv4(ipaddr.IP)
 
 	r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 	return &Session{
-		lastSequence:  0,
-		totalSent:     0,
-		totalReceived: 0,
-		maxRtt:        0,
-		isFinished:    make(chan bool, 1),
-		id:            r.Intn(math.MaxUint16),
-		bigID:         r.Uint64(),
-		isIPv4:        ipv4,
-		address:       address,
-		settings:      settings,
+		lastSequence: 0,
+		totalSent:    0,
+		totalRecv:    0,
+		maxRtt:       0,
+		isFinished:   make(chan bool, 1),
+		id:           r.Intn(math.MaxUint16),
+		bigID:        r.Uint64(),
+		isIPv4:       ipv4,
+		addr:         resAddr,
+		settings:     settings,
 	}, nil
 }
 
@@ -144,7 +145,7 @@ func (s *Session) Start() error {
 			}
 			timeout.Reset(duration)
 
-			println(time.Now().String(), "Sending echo", s.address.String())
+			println(time.Now().String(), "Sending echo", s.addr.String())
 			err = s.requestEcho(conn)
 			if err != nil {
 				println(time.Now().String(), "Echo failed %s", err.Error())

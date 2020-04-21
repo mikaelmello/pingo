@@ -42,19 +42,23 @@ func (s *Session) requestEcho(conn *icmp.PacketConn) error {
 		Body: body,
 	}
 
-	msgBytes, err := msg.Marshal(nil)
+	bytesmsg, err := msg.Marshal(nil)
 
 	if err != nil {
-		return err
+		return fmt.Errorf("Could not marshal ICMP message with Echo body: %w", err)
 	}
 
-	_, err = conn.WriteTo(msgBytes, s.address)
+	_, err = conn.WriteTo(bytesmsg, s.addr)
 
 	// request failing or not, we must update these values
 	s.totalSent++
 	s.lastSequence++
 
-	return err
+	if err != nil {
+		return fmt.Errorf("Error while sending ECHO_REQUEST: %w", err)
+	}
+
+	return nil
 }
 
 // pollICMP constantly polls the connection to receive and process any replies.
@@ -104,6 +108,10 @@ func (s *Session) readFrom(conn *icmp.PacketConn, bytes []byte) (int, int, error
 		if cm != nil {
 			ttl = cm.HopLimit
 		}
+	}
+
+	if err != nil {
+		err = fmt.Errorf("Error while reading bytes from connection: %w", err)
 	}
 
 	return length, ttl, err
@@ -159,7 +167,7 @@ func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
 		}
 		s.rtts = append(s.rtts, rtt) // stats purposes
 
-		s.totalReceived++
+		s.totalRecv++
 
 		return true, nil
 	default:
