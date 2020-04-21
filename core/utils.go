@@ -11,12 +11,6 @@ func isIPv4(ip net.IP) bool {
 	return ip.To4() != nil
 }
 
-// isIPv4 returns whether the ip must be an IPv6 address.
-// Warning: This will only be true if the address can not be IPv4.
-func isIPv6(ip net.IP) bool {
-	return !isIPv4(ip)
-}
-
 // unixNanoToBytes converts the UnixNano representation of a time to an array of 8 bytes.
 func unixNanoToBytes(t time.Time) []byte {
 	return int64ToBytes(t.UnixNano())
@@ -43,7 +37,7 @@ func bytesToInt64(b []byte) int64 {
 // uint64ToBytes converts an uint64 to an array of 8 bytes.
 func uint64ToBytes(i uint64) []byte {
 	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, uint64(i))
+	binary.BigEndian.PutUint64(b, i)
 	return b
 }
 

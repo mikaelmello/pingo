@@ -13,6 +13,7 @@ import (
 
 const (
 	echoCode                  = 0
+	ttlExceeded               = 0
 	icmpProtocol              = 1
 	icmpv6Protocol            = 58
 	dataLength                = 16
@@ -45,7 +46,7 @@ func (s *Session) requestEcho(conn *icmp.PacketConn) error {
 	bytesmsg, err := msg.Marshal(nil)
 
 	if err != nil {
-		return fmt.Errorf("Could not marshal ICMP message with Echo body: %w", err)
+		return fmt.Errorf("could not marshal ICMP message with Echo body: %w", err)
 	}
 
 	_, err = conn.WriteTo(bytesmsg, s.addr)
@@ -55,7 +56,7 @@ func (s *Session) requestEcho(conn *icmp.PacketConn) error {
 	s.lastSequence++
 
 	if err != nil {
-		return fmt.Errorf("Error while sending ECHO_REQUEST: %w", err)
+		return fmt.Errorf("error while sending ECHO_REQUEST: %w", err)
 	}
 
 	return nil
@@ -72,7 +73,12 @@ func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<
 			return
 		default:
 			buffer := make([]byte, 1024)
-			conn.SetReadDeadline(time.Now().Add(time.Second * 1))
+			if err := conn.SetReadDeadline(time.Now().Add(time.Second * 1)); err != nil {
+				fmt.Printf("Fatal error here")
+				s.isFinished <- true
+				return
+			}
+
 			length, ttl, err := s.readFrom(conn, buffer)
 			if err != nil {
 				if neterr, ok := err.(*net.OpError); ok {
@@ -124,7 +130,7 @@ func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
 
 	m, err := icmp.ParseMessage(s.getProtocol(), raw.content)
 	if err != nil {
-		return false, fmt.Errorf("Error parsing ICMP message: %s", err.Error())
+		return false, fmt.Errorf("error parsing ICMP message: %s", err.Error())
 	}
 
 	if m.Code != echoCode || (m.Type != ipv4.ICMPTypeEchoReply && m.Type != ipv6.ICMPTypeEchoReply) {
@@ -138,19 +144,18 @@ func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
 
 		if s.settings.IsPrivileged {
 			// Check if reply from same ID
-			if body.ID != body.ID {
+			if body.ID != s.id {
 				return false, nil
 			}
 		}
 
 		if len(body.Data) < dataLength {
-			return false, fmt.Errorf("Missing data, %d bytes out of %d", len(body.Data), dataLength)
+			return false, fmt.Errorf("missing data, %d bytes out of %d", len(body.Data), dataLength)
 		}
 
 		// retrieve the info we serialized
 		bigID := bytesToUint64(body.Data[:8])
 		tstp := bytesToUnixNano(body.Data[8:])
-
 		// checks if the body seq matches the seq of the last echo request
 		if body.Seq != s.lastSequence {
 			return false, nil
@@ -171,7 +176,7 @@ func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
 
 		return true, nil
 	default:
-		return false, fmt.Errorf("Invalid body type: '%T'", body)
+		return false, fmt.Errorf("invalid body type: '%T'", body)
 	}
 }
 
@@ -213,22 +218,22 @@ func (s *Session) getConnection() (*icmp.PacketConn, error) {
 	conn, err := icmp.ListenPacket(s.getNetwork(), "")
 
 	if err != nil {
-		return nil, fmt.Errorf("Could not listen to ICMP packets, error: %s", err.Error())
+		return nil, fmt.Errorf("could not listen to ICMP packets, error: %s", err.Error())
 	}
 
 	if s.isIPv4 {
 		if err := conn.IPv4PacketConn().SetTTL(s.settings.TTL); err != nil {
-			return nil, fmt.Errorf("Could not set TTL in connection, error: %s", err.Error())
+			return nil, fmt.Errorf("could not set TTL in connection, error: %s", err.Error())
 		}
 		if err := conn.IPv4PacketConn().SetControlMessage(ipv4.FlagTTL, true); err != nil {
-			return nil, fmt.Errorf("Could not set control message in connection, error: %s", err.Error())
+			return nil, fmt.Errorf("could not set control message in connection, error: %s", err.Error())
 		}
 	} else {
 		if err := conn.IPv6PacketConn().SetHopLimit(s.settings.TTL); err != nil {
-			return nil, fmt.Errorf("Could not set control message in connection, error: %s", err.Error())
+			return nil, fmt.Errorf("could not set control message in connection, error: %s", err.Error())
 		}
 		if err := conn.IPv6PacketConn().SetControlMessage(ipv6.FlagHopLimit, true); err != nil {
-			return nil, fmt.Errorf("Could not set control message in connection, error: %s", err.Error())
+			return nil, fmt.Errorf("could not set control message in connection, error: %s", err.Error())
 		}
 	}
 

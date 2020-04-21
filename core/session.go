@@ -49,7 +49,7 @@ type Session struct {
 func NewSession(address string, settings *Settings) (*Session, error) {
 	ipaddr, err := net.ResolveIPAddr("ip", address)
 	if err != nil {
-		return nil, fmt.Errorf("Error while resolving address %s: %w", address, err)
+		return nil, fmt.Errorf("error while resolving address %s: %w", address, err)
 	}
 
 	var resAddr net.Addr = ipaddr
@@ -134,16 +134,7 @@ func (s *Session) Start() error {
 				continue
 			}
 
-			// if we already have successful pings, our timeout is now 2 times
-			// the longest registered rtt, as the original ping does
-			// otherwise, we use the standard timeout
-			var duration time.Duration
-			if len(s.rtts) > 0 {
-				duration = time.Duration(2 * s.maxRtt)
-			} else {
-				duration = time.Duration(s.getTimeoutDuration())
-			}
-			timeout.Reset(duration)
+			timeout.Reset(s.getTimeoutDuration())
 
 			println(time.Now().String(), "Sending echo", s.addr.String())
 			err = s.requestEcho(conn)
@@ -196,8 +187,15 @@ func (s *Session) getIntervalDuration() time.Duration {
 	return time.Second * time.Duration(s.settings.Interval)
 }
 
-// Returns the timeout setting parsed as a duration in seconds
+// Returns the appropriate value for the next timeout parsed as a duration in seconds
 func (s *Session) getTimeoutDuration() time.Duration {
+
+	// if we already have successful pings, our timeout is now 2 times
+	// the longest registered rtt, as the original ping does
+	// otherwise, we use the standard timeout
+	if len(s.rtts) > 0 {
+		return time.Duration(2 * s.maxRtt)
+	}
 	return time.Second * time.Duration(s.settings.Timeout)
 }
 
