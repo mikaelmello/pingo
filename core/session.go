@@ -8,15 +8,9 @@ import (
 	"time"
 )
 
-// Bundle is an aggregation of ping executions
-type Bundle struct {
-	ttl              int
-	count            int
-	interval         time.Duration
-	timeout          time.Duration
-	deadline         time.Duration
-	isDeadlineActive bool
-	isPrivileged     bool
+// Session is an aggregation of ping executions
+type Session struct {
+	settings *Settings
 
 	id              int
 	bigID           uint64
@@ -30,8 +24,8 @@ type Bundle struct {
 	isFinished      chan bool
 }
 
-// NewBundle creates a new Bundle
-func NewBundle(addr string) (*Bundle, error) {
+// NewSession creates a new Session
+func NewSession(addr string, settings *Settings) (*Session, error) {
 	ipaddr, err := net.ResolveIPAddr("ip", addr)
 	if err != nil {
 		return nil, err
@@ -40,38 +34,31 @@ func NewBundle(addr string) (*Bundle, error) {
 	ipv4 := isIPv4(ipaddr.IP)
 
 	r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
-	return &Bundle{
-		ttl:              64,
-		count:            -1,
-		interval:         time.Second * 1,
-		timeout:          time.Second * 10,
-		deadline:         -1,
-		isDeadlineActive: false,
-		isPrivileged:     false,
-
-		id:              r.Intn(math.MaxUint16),
-		bigID:           r.Uint64(),
+	return &Session{
 		currentSequence: 0,
 		totalSent:       0,
 		totalReceived:   0,
 		maxRtt:          0,
-		address:         ipaddr,
+		id:              r.Intn(math.MaxUint16),
+		bigID:           r.Uint64(),
 		isIPv4:          ipv4,
+		address:         ipaddr,
+		settings:        settings,
 	}, nil
 }
 
 // Start starts the sequence of pings
-func (b *Bundle) Start() error {
-	conn, err := b.GetConnection()
+func (s *Session) Start() error {
+	conn, err := s.GetConnection()
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	deadline := time.NewTimer(b.deadline)
+	deadline := time.NewTimer(s.getDeadlineDuration())
 	defer deadline.Stop()
 
-	timeout := time.NewTimer(b.timeout)
+	timeout := time.NewTimer(s.getTimeoutDuration())
 	defer timeout.Stop()
 
 	interval := time.NewTimer(0)
@@ -82,15 +69,15 @@ func (b *Bundle) Start() error {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go b.pollICMP(&wg, conn, rawPackets)
+	go s.pollICMP(&wg, conn, rawPackets)
 
 	for {
 		select {
 		case <-deadline.C:
-			if !b.isDeadlineActive {
+			if !s.isDeadlineActive() {
 				continue
 			}
-			b.isFinished <- true
+			s.isFinished <- true
 			wg.Wait()
 			return nil
 
@@ -100,7 +87,7 @@ func (b *Bundle) Start() error {
 			continue
 
 		case <-interval.C:
-			if b.count > 0 && b.totalSent >= b.count {
+			if s.settings.MaxCount > 0 && s.totalSent >= s.settings.MaxCount {
 				println(time.Now().String(), "Reached max of count")
 				clearTimer(interval)
 				clearTimer(timeout)
@@ -109,27 +96,27 @@ func (b *Bundle) Start() error {
 
 			// get max rtt * 2
 			var duration time.Duration
-			if len(b.rtts) > 0 {
+			if len(s.rtts) > 0 {
 				println(time.Now().String(), "Waiting for 2*maxRtt")
-				duration = time.Duration(2 * b.maxRtt)
+				duration = time.Duration(2 * s.maxRtt)
 			} else {
 				println(time.Now().String(), "Waiting for btimeout")
-				duration = time.Duration(b.timeout)
+				duration = time.Duration(s.getTimeoutDuration())
 			}
 			timeout.Reset(duration)
 
-			println(time.Now().String(), "Sending echo", b.address.String())
-			err = b.requestEcho(conn)
+			println(time.Now().String(), "Sending echo", s.address.String())
+			err = s.requestEcho(conn)
 			if err != nil {
 				println(time.Now().String(), "Echo failed %s", err.Error())
-				interval.Reset(b.interval)
+				interval.Reset(s.getIntervalDuration())
 				clearTimer(timeout)
 				continue
 			}
 
 		case raw := <-rawPackets:
 			println(time.Now().String(), "Received ICMP")
-			match, err := b.checkRawPacket(raw)
+			match, err := s.checkRawPacket(raw)
 
 			if err != nil || !match {
 				if err != nil {
@@ -141,11 +128,27 @@ func (b *Bundle) Start() error {
 			}
 
 			clearTimer(timeout)
-			interval.Reset(b.interval)
+			interval.Reset(s.getIntervalDuration())
 
-		case <-b.isFinished:
+		case <-s.isFinished:
 			wg.Wait()
 			return nil
 		}
 	}
+}
+
+func (s *Session) getDeadlineDuration() time.Duration {
+	return time.Second * time.Duration(s.settings.Deadline)
+}
+
+func (s *Session) getIntervalDuration() time.Duration {
+	return time.Second * time.Duration(s.settings.Interval)
+}
+
+func (s *Session) getTimeoutDuration() time.Duration {
+	return time.Second * time.Duration(s.settings.Timeout)
+}
+
+func (s *Session) isDeadlineActive() bool {
+	return s.settings.Deadline > 0
 }

@@ -22,20 +22,20 @@ const (
 	icmpv6UnprivilegedNetwork = "udp6"
 )
 
-func (b *Bundle) requestEcho(conn *icmp.PacketConn) error {
+func (s *Session) requestEcho(conn *icmp.PacketConn) error {
 
-	bigID := uint64ToBytes(b.bigID)     // ensure same source
+	bigID := uint64ToBytes(s.bigID)     // ensure same source
 	tstp := unixNanoToBytes(time.Now()) // calculate rtt
 	data := append(bigID, tstp...)
 
 	body := &icmp.Echo{
-		ID:   b.id,
-		Seq:  b.currentSequence,
+		ID:   s.id,
+		Seq:  s.currentSequence,
 		Data: data,
 	}
 
 	msg := &icmp.Message{
-		Type: b.GetICMPType(),
+		Type: s.GetICMPType(),
 		Code: echoCode,
 		Body: body,
 	}
@@ -46,18 +46,18 @@ func (b *Bundle) requestEcho(conn *icmp.PacketConn) error {
 		return err
 	}
 
-	var address net.Addr = b.address
-	if !b.isPrivileged {
-		address = &net.UDPAddr{IP: b.address.IP, Zone: b.address.Zone}
+	var address net.Addr = s.address
+	if !s.settings.IsPrivileged {
+		address = &net.UDPAddr{IP: s.address.IP, Zone: s.address.Zone}
 	}
 	_, err = conn.WriteTo(msgBytes, address)
-	b.totalSent++
-	b.currentSequence++
+	s.totalSent++
+	s.currentSequence++
 
 	return err
 }
 
-func (b *Bundle) pollICMP(
+func (s *Session) pollICMP(
 	wg *sync.WaitGroup,
 	conn *icmp.PacketConn,
 	recv chan<- *rawPacket,
@@ -65,18 +65,18 @@ func (b *Bundle) pollICMP(
 	defer wg.Done()
 	for {
 		select {
-		case <-b.isFinished:
+		case <-s.isFinished:
 			return
 		default:
 			buffer := make([]byte, 1024)
 			conn.SetReadDeadline(time.Now().Add(time.Second * 1))
-			length, ttl, err := b.readFrom(conn, buffer)
+			length, ttl, err := s.readFrom(conn, buffer)
 			if err != nil {
 				if neterr, ok := err.(*net.OpError); ok {
 					if neterr.Timeout() {
 						continue
 					} else {
-						close(b.isFinished)
+						close(s.isFinished)
 						return
 					}
 				}
@@ -87,11 +87,11 @@ func (b *Bundle) pollICMP(
 	}
 }
 
-func (b *Bundle) readFrom(conn *icmp.PacketConn, bytes []byte) (int, int, error) {
+func (s *Session) readFrom(conn *icmp.PacketConn, bytes []byte) (int, int, error) {
 	var length int
 	var ttl int
 	var err error
-	if b.isIPv4 {
+	if s.isIPv4 {
 		var cm *ipv4.ControlMessage
 		length, cm, _, err = conn.IPv4PacketConn().ReadFrom(bytes)
 		if cm != nil {
@@ -108,10 +108,10 @@ func (b *Bundle) readFrom(conn *icmp.PacketConn, bytes []byte) (int, int, error)
 	return length, ttl, err
 }
 
-func (b *Bundle) checkRawPacket(raw *rawPacket) (bool, error) {
+func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
 	receivedTstp := time.Now()
 
-	m, err := icmp.ParseMessage(b.GetProtocol(), raw.content)
+	m, err := icmp.ParseMessage(s.GetProtocol(), raw.content)
 	if err != nil {
 		return false, fmt.Errorf("Error parsing ICMP message: %s", err.Error())
 	}
@@ -138,76 +138,76 @@ func (b *Bundle) checkRawPacket(raw *rawPacket) (bool, error) {
 		bigID := bytesToUint64(body.Data[:8])
 		tstp := bytesToUnixNano(body.Data[8:])
 
-		if (body.Seq + 1) != b.currentSequence {
+		if (body.Seq + 1) != s.currentSequence {
 			return false, nil
 		}
 
-		if bigID != b.bigID {
+		if bigID != s.bigID {
 			return false, nil
 		}
 
 		rtt := receivedTstp.Sub(tstp).Nanoseconds()
-		if rtt > b.maxRtt {
-			b.maxRtt = rtt
+		if rtt > s.maxRtt {
+			s.maxRtt = rtt
 		}
-		b.rtts = append(b.rtts, rtt)
-		b.totalReceived++
+		s.rtts = append(s.rtts, rtt)
+		s.totalReceived++
 		return true, nil
 	default:
 		return false, fmt.Errorf("Invalid body type: '%T'", body)
 	}
 }
 
-// GetICMPType returns the appropriate type to be used in the ICMP request of this bundle
-func (b *Bundle) GetICMPType() icmp.Type {
-	if b.isIPv4 {
+// GetICMPType returns the appropriate type to be used in the ICMP request of this session
+func (s *Session) GetICMPType() icmp.Type {
+	if s.isIPv4 {
 		return ipv4.ICMPTypeEcho
 	}
 
 	return ipv6.ICMPTypeEchoRequest
 }
 
-// GetNetwork returns the appropriate ICMP network value of the bundle
-func (b *Bundle) GetNetwork() string {
-	if b.isIPv4 && b.isPrivileged {
+// GetNetwork returns the appropriate ICMP network value of the session
+func (s *Session) GetNetwork() string {
+	if s.isIPv4 && s.settings.IsPrivileged {
 		return icmpPrivilegedNetwork
 	}
-	if b.isIPv4 && !b.isPrivileged {
+	if s.isIPv4 && !s.settings.IsPrivileged {
 		return icmpUnprivilegedNetwork
 	}
-	if !b.isIPv4 && b.isPrivileged {
+	if !s.isIPv4 && s.settings.IsPrivileged {
 		return icmpv6PrivilegedNetwork
 	}
 
 	return icmpv6UnprivilegedNetwork
 }
 
-// GetProtocol returns the appropriate ICMP protocol value of the bundle
-func (b *Bundle) GetProtocol() int {
-	if b.isIPv4 {
+// GetProtocol returns the appropriate ICMP protocol value of the session
+func (s *Session) GetProtocol() int {
+	if s.isIPv4 {
 		return icmpProtocol
 	}
 
 	return icmpv6Protocol
 }
 
-// GetConnection returns a connection made to the bundle's address
-func (b *Bundle) GetConnection() (*icmp.PacketConn, error) {
-	conn, err := icmp.ListenPacket(b.GetNetwork(), "")
+// GetConnection returns a connection made to the session's address
+func (s *Session) GetConnection() (*icmp.PacketConn, error) {
+	conn, err := icmp.ListenPacket(s.GetNetwork(), "")
 
 	if err != nil {
 		return nil, fmt.Errorf("Could not listen to ICMP packets, error: %s", err.Error())
 	}
 
-	if b.isIPv4 {
-		if err := conn.IPv4PacketConn().SetTTL(b.ttl); err != nil {
+	if s.isIPv4 {
+		if err := conn.IPv4PacketConn().SetTTL(s.settings.TTL); err != nil {
 			return nil, fmt.Errorf("Could not set TTL in connection, error: %s", err.Error())
 		}
 		if err := conn.IPv4PacketConn().SetControlMessage(ipv4.FlagTTL, true); err != nil {
 			return nil, fmt.Errorf("Could not set control message in connection, error: %s", err.Error())
 		}
 	} else {
-		if err := conn.IPv6PacketConn().SetHopLimit(b.ttl); err != nil {
+		if err := conn.IPv6PacketConn().SetHopLimit(s.settings.TTL); err != nil {
 			return nil, fmt.Errorf("Could not set control message in connection, error: %s", err.Error())
 		}
 		if err := conn.IPv6PacketConn().SetControlMessage(ipv6.FlagHopLimit, true); err != nil {
