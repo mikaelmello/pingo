@@ -129,13 +129,21 @@ func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
 		return false, fmt.Errorf("error parsing ICMP message: %s", err.Error())
 	}
 
-	if m.Code != echoCode || (m.Type != ipv4.ICMPTypeEchoReply && m.Type != ipv6.ICMPTypeEchoReply) {
-		// Not an echo reply, ignore it
+	isEchoReply := m.Code == echoCode && (m.Type == ipv4.ICMPTypeEchoReply || m.Type == ipv6.ICMPTypeEchoReply)
+	isTimeExceeded := m.Code == ttlExceeded &&
+		(m.Type == ipv4.ICMPTypeTimeExceeded || m.Type == ipv6.ICMPTypeTimeExceeded)
+
+	if !isEchoReply && !isTimeExceeded {
+		// Not an echo reply or time exceeded, ignore it
 		return false, nil
 	}
 
 	// cast body as icmp.Echo
 	switch body := m.Body.(type) {
+	case *icmp.TimeExceeded:
+		println("Time exceeded hmm")
+		fmt.Printf("%0b", body.Data)
+		return false, nil
 	case *icmp.Echo:
 
 		if s.settings.IsPrivileged {
