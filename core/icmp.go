@@ -11,12 +11,16 @@ import (
 )
 
 const (
-	echoCode = 0
+	echoCode       = 0
+	icmpProtocol   = 1
+	icmpv6Protocol = 58
+	icmpNetwork    = "ip4:icmp"
+	icmpv6Network  = "ip6:ipv6-icmp"
 )
 
 func (b *Bundle) requestEcho(conn *icmp.PacketConn) error {
 
-	bigID := int64ToBytes(b.bigID)      // ensure same source
+	bigID := uint64ToBytes(b.bigID)     // ensure same source
 	tstp := unixNanoToBytes(time.Now()) // calculate rtt
 	data := append(bigID, tstp...)
 
@@ -67,4 +71,22 @@ func (b *Bundle) GetICMPType() icmp.Type {
 	}
 
 	return ipv6.ICMPTypeEchoRequest
+}
+
+// GetNetwork returns the appropriate ICMP network value of the bundle
+func (b *Bundle) GetNetwork() string {
+	if b.isIPv4 {
+		return icmpNetwork
+	}
+
+	return icmpv6Network
+}
+
+// GetProtocol returns the appropriate ICMP protocol value of the bundle
+func (b *Bundle) GetProtocol() int {
+	if b.isIPv4 {
+		return icmpProtocol
+	}
+
+	return icmpv6Protocol
 }

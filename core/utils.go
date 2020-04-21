@@ -11,7 +11,7 @@ func isIPv4(ip net.IP) bool {
 }
 
 func isIPv6(ip net.IP) bool {
-	return len(ip) == net.IPv6len
+	return !isIPv4(ip)
 }
 
 func unixNanoToBytes(t time.Time) []byte {
@@ -31,4 +31,14 @@ func int64ToBytes(i int64) []byte {
 
 func bytesToInt64(b []byte) int64 {
 	return int64(binary.BigEndian.Uint64(b))
+}
+
+func uint64ToBytes(i uint64) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, uint64(i))
+	return b
+}
+
+func bytesToUint64(b []byte) uint64 {
+	return binary.BigEndian.Uint64(b)
 }
