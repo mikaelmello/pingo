@@ -15,13 +15,13 @@ var rootCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		bundle, err := core.NewBundle(args[0])
 		if err != nil {
-			fmt.Printf("Error %s", err.Error())
+			fmt.Printf("Error %s\n", err.Error())
 			return
 		}
 
 		err = bundle.Start()
 		if err != nil {
-			fmt.Printf("Error %s", err.Error())
+			fmt.Printf("Error %s\n", err.Error())
 			return
 		}
 

@@ -12,12 +12,14 @@ import (
 )
 
 const (
-	echoCode       = 0
-	icmpProtocol   = 1
-	icmpv6Protocol = 58
-	dataLength     = 16
-	icmpNetwork    = "ip4:icmp"
-	icmpv6Network  = "ip6:ipv6-icmp"
+	echoCode                  = 0
+	icmpProtocol              = 1
+	icmpv6Protocol            = 58
+	dataLength                = 16
+	icmpPrivilegedNetwork     = "ip4:icmp"
+	icmpv6PrivilegedNetwork   = "ip6:ipv6-icmp"
+	icmpUnprivilegedNetwork   = "udp4"
+	icmpv6UnprivilegedNetwork = "udp6"
 )
 
 func (b *Bundle) requestEcho(conn *icmp.PacketConn) error {
@@ -44,7 +46,11 @@ func (b *Bundle) requestEcho(conn *icmp.PacketConn) error {
 		return err
 	}
 
-	_, err = conn.WriteTo(msgBytes, b.address)
+	var address net.Addr = b.address
+	if !b.isPrivileged {
+		address = &net.UDPAddr{IP: b.address.IP, Zone: b.address.Zone}
+	}
+	_, err = conn.WriteTo(msgBytes, address)
 	b.totalSent++
 	b.currentSequence++
 
@@ -59,7 +65,7 @@ func (b *Bundle) pollICMP(
 	defer wg.Done()
 	for {
 		select {
-		case <-b.finished:
+		case <-b.isFinished:
 			return
 		default:
 			buffer := make([]byte, 1024)
@@ -70,7 +76,7 @@ func (b *Bundle) pollICMP(
 					if neterr.Timeout() {
 						continue
 					} else {
-						close(b.finished)
+						close(b.isFinished)
 						return
 					}
 				}
@@ -129,14 +135,10 @@ func (b *Bundle) checkRawPacket(raw *rawPacket) (bool, error) {
 			return false, fmt.Errorf("Missing data, %d bytes out of %d", len(body.Data), dataLength)
 		}
 
-		bigID := bytesToUint64(body.Data[8:])
-		tstp := bytesToUnixNano(body.Data[:8])
+		bigID := bytesToUint64(body.Data[:8])
+		tstp := bytesToUnixNano(body.Data[8:])
 
-		if body.ID != b.id {
-			return false, nil
-		}
-
-		if body.Seq != b.currentSequence {
+		if (body.Seq + 1) != b.currentSequence {
 			return false, nil
 		}
 
@@ -148,7 +150,6 @@ func (b *Bundle) checkRawPacket(raw *rawPacket) (bool, error) {
 		if rtt > b.maxRtt {
 			b.maxRtt = rtt
 		}
-		println(rtt)
 		b.rtts = append(b.rtts, rtt)
 		b.totalReceived++
 		return true, nil
@@ -168,11 +169,17 @@ func (b *Bundle) GetICMPType() icmp.Type {
 
 // GetNetwork returns the appropriate ICMP network value of the bundle
 func (b *Bundle) GetNetwork() string {
-	if b.isIPv4 {
-		return icmpNetwork
+	if b.isIPv4 && b.isPrivileged {
+		return icmpPrivilegedNetwork
+	}
+	if b.isIPv4 && !b.isPrivileged {
+		return icmpUnprivilegedNetwork
+	}
+	if !b.isIPv4 && b.isPrivileged {
+		return icmpv6PrivilegedNetwork
 	}
 
-	return icmpv6Network
+	return icmpv6UnprivilegedNetwork
 }
 
 // GetProtocol returns the appropriate ICMP protocol value of the bundle

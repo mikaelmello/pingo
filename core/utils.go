@@ -42,3 +42,9 @@ func uint64ToBytes(i uint64) []byte {
 func bytesToUint64(b []byte) uint64 {
 	return binary.BigEndian.Uint64(b)
 }
+
+func clearTimer(t *time.Timer) {
+	if !t.Stop() {
+		<-t.C
+	}
+}
