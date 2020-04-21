@@ -35,7 +35,7 @@ type Session struct {
 	rtts []int64
 
 	// address contains the net.Addr of the target host
-	address *net.IPAddr
+	address net.Addr
 
 	// isIPv4 contains whether the stored address is IPv4 or not (IPv6)
 	isIPv4 bool
@@ -51,6 +51,13 @@ func NewSession(addr string, settings *Settings) (*Session, error) {
 		return nil, err
 	}
 
+	var address net.Addr = ipaddr
+	if !settings.IsPrivileged {
+		// The provided dst must be net.UDPAddr when conn is a non-privileged
+		// datagram-oriented ICMP endpoint.
+		address = &net.UDPAddr{IP: ipaddr.IP, Zone: ipaddr.Zone}
+	}
+
 	ipv4 := isIPv4(ipaddr.IP)
 
 	r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
@@ -62,7 +69,7 @@ func NewSession(addr string, settings *Settings) (*Session, error) {
 		id:            r.Intn(math.MaxUint16),
 		bigID:         r.Uint64(),
 		isIPv4:        ipv4,
-		address:       ipaddr,
+		address:       address,
 		settings:      settings,
 	}, nil
 }

@@ -48,14 +48,7 @@ func (s *Session) requestEcho(conn *icmp.PacketConn) error {
 		return err
 	}
 
-	var address net.Addr = s.address
-	if !s.settings.IsPrivileged {
-		// The provided dst must be net.UDPAddr when conn is a non-privileged
-		// datagram-oriented ICMP endpoint.
-		address = &net.UDPAddr{IP: s.address.IP, Zone: s.address.Zone}
-	}
-
-	_, err = conn.WriteTo(msgBytes, address)
+	_, err = conn.WriteTo(msgBytes, s.address)
 
 	// request failing or not, we must update these values
 	s.totalSent++
