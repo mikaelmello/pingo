@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"net"
 	"syscall"
 	"time"
@@ -89,4 +90,25 @@ func (b *Bundle) GetProtocol() int {
 	}
 
 	return icmpv6Protocol
+}
+
+// GetConnection returns a connection made to the bundle's address
+func (b *Bundle) GetConnection() (*icmp.PacketConn, error) {
+	conn, err := icmp.ListenPacket(b.GetNetwork(), "")
+
+	if err != nil {
+		return nil, fmt.Errorf("Could not listen to ICMP packets, error: %s", err.Error())
+	}
+
+	if b.isIPv4 {
+		if err := conn.IPv4PacketConn().SetControlMessage(ipv4.FlagTTL, true); err != nil {
+			return nil, fmt.Errorf("Could not set control message in connection, error: %s", err.Error())
+		}
+	} else {
+		if err := conn.IPv6PacketConn().SetControlMessage(ipv6.FlagHopLimit, true); err != nil {
+			return nil, fmt.Errorf("Could not set control message in connection, error: %s", err.Error())
+		}
+	}
+
+	return conn, nil
 }
