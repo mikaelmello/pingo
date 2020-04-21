@@ -145,8 +145,25 @@ func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
 	switch body := m.Body.(type) {
 	case *icmp.TimeExceeded:
 		println("Time exceeded hmm")
-		fmt.Printf("%0b", body.Data)
-		return false, nil
+
+		origdgram := body.Data[20:28]
+
+		echoBody := &icmp.Echo{
+			ID:  int(bytesToUint16(origdgram[4:6])),
+			Seq: int(bytesToUint16(origdgram[6:])),
+		}
+
+		// Check if TLE came from same ID
+		if echoBody.ID != s.id {
+			return false, nil
+		}
+
+		// checks if the body seq matches the seq of the last echo request
+		if echoBody.Seq != s.lastSequence {
+			return false, nil
+		}
+
+		return true, nil
 	case *icmp.Echo:
 
 		if s.settings.IsPrivileged {

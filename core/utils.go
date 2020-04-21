@@ -34,6 +34,11 @@ func bytesToInt64(b []byte) int64 {
 	return int64(binary.BigEndian.Uint64(b))
 }
 
+// bytesToUint16 converts an array of bytes to int16.
+func bytesToUint16(b []byte) uint16 {
+	return binary.BigEndian.Uint16(b)
+}
+
 // uint64ToBytes converts an uint64 to an array of 8 bytes.
 func uint64ToBytes(i uint64) []byte {
 	b := make([]byte, 8)
