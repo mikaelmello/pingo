@@ -101,7 +101,7 @@ func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<
 			}
 
 			s.logger.Trace("Reading from connection")
-			length, ttl, err := s.readFrom(conn, buffer)
+			length, cm, err := s.readFrom(conn, buffer)
 			if err != nil {
 				if neterr, ok := err.(*net.OpError); ok {
 					if neterr.Timeout() {
@@ -117,32 +117,40 @@ func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<
 			}
 
 			// sends the packet to the session so it can be checked and processed
-			s.logger.Infof("Sending raw packet %x with ttl %d to main session loop", buffer[:length], ttl)
-			recv <- &rawPacket{content: buffer, length: length, ttl: ttl}
+			s.logger.Infof("Sending raw packet %x with ttl %d to main session loop", buffer[:length], cm.TTL)
+			recv <- &rawPacket{content: buffer, length: length, cm: cm}
 		}
 	}
 }
 
 // readFrom is a wrapper meant to read bytes from the connection stream and gather relevant info such as the ttl.
-func (s *Session) readFrom(conn *icmp.PacketConn, bytes []byte) (int, int, error) {
+func (s *Session) readFrom(conn *icmp.PacketConn, bytes []byte) (int, *controlMessage, error) {
 	var length int
-	var ttl int
+	var cm *controlMessage
 	var err error
 	if s.isIPv4 {
-		var cm *ipv4.ControlMessage
-		length, cm, _, err = conn.IPv4PacketConn().ReadFrom(bytes)
-		if cm != nil {
-			ttl = cm.TTL
+		var cmv4 *ipv4.ControlMessage
+		length, cmv4, _, err = conn.IPv4PacketConn().ReadFrom(bytes)
+		if cmv4 != nil {
+			cm = &controlMessage{
+				TTL: cmv4.TTL,
+				Src: cmv4.Src,
+				Dst: cmv4.Dst,
+			}
 		}
 	} else {
-		var cm *ipv6.ControlMessage
-		length, cm, _, err = conn.IPv6PacketConn().ReadFrom(bytes)
-		if cm != nil {
-			ttl = cm.HopLimit
+		var cmv6 *ipv6.ControlMessage
+		length, cmv6, _, err = conn.IPv6PacketConn().ReadFrom(bytes)
+		if cmv6 != nil {
+			cm = &controlMessage{
+				TTL: cmv6.HopLimit,
+				Src: cmv6.Src,
+				Dst: cmv6.Dst,
+			}
 		}
 	}
 
-	return length, ttl, err
+	return length, cm, err
 }
 
 // checkRawPacket returns whether the packet matches all requirements to be considered a successful reply.
@@ -196,6 +204,8 @@ func (s *Session) parseRawPacket(raw *rawPacket) (bool, error) {
 		s.logger.Debugf("TimeExceeded message echoBody Seq matches last sent echo request. Expected: %d.", s.lastSequence)
 
 		s.logger.Info("TimeExceeded matches last sent echo request.")
+
+		println(raw.cm.Src.String(), raw.cm.TTL)
 		return true, nil
 	case *icmp.Echo:
 		s.logger.Debug("Received an echo reply message")
@@ -234,7 +244,11 @@ func (s *Session) parseRawPacket(raw *rawPacket) (bool, error) {
 
 		rttduration := receivedTstp.Sub(tstp)
 		rtt := rttduration.Nanoseconds()
-		s.logger.Infof("Echo reply matches last sent echo request. RTT is %s and TTL is %d", rttduration, raw.ttl)
+
+		s.logger.Infof("Echo reply matches last sent echo request. RTT is %s, TTL is %d and source address is %s",
+			rttduration, raw.cm.TTL, raw.cm.Src.String())
+
+		println(raw.cm.TTL, raw.cm.Src.String())
 
 		if rtt > s.maxRtt {
 			s.maxRtt = rtt
