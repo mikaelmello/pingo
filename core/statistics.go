@@ -58,6 +58,7 @@ func initStatsCb(s *Session, msg *icmp.Message) {
 // finishStatsCb is a callback to be used when a session ends, calculating all useful stats.
 func finishStatsCb(s *Session) {
 	s.Stats.EndTime = time.Now()
+	s.Stats.PktLoss = float64(s.Stats.TotalSent-s.Stats.TotalRecv) / float64(s.Stats.TotalSent)
 
 	rttsCnt := int64(len(s.Stats.RTTs))
 
