@@ -36,9 +36,6 @@ type Settings struct {
 
 	// LoggingLevel defines the level of the session logger.
 	LoggingLevel int
-
-	// PrettyPrint defines if the output is formatted different from the normal ping.
-	PrettyPrint bool
 }
 
 // DefaultSettings returns the default settings for a ping session, change as you wish.
@@ -57,7 +54,6 @@ func DefaultSettings() *Settings {
 		Interval:     1,
 		IsPrivileged: false,
 		LoggingLevel: 0,
-		PrettyPrint:  false,
 	}
 }
 
