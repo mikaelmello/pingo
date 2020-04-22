@@ -51,7 +51,7 @@ func (s *Session) sendEchoRequest(conn *icmp.PacketConn) error {
 
 // Builds the next ICMP package, does not modify session's state.
 func (s *Session) buildEchoRequest() *icmp.Message {
-	s.logger.Tracef("Building new echho request")
+	s.logger.Tracef("Building new echo request")
 
 	now := time.Now()
 	bigID := uint64ToBytes(s.bigID) // ensure same source

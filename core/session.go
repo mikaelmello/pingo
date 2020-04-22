@@ -149,7 +149,7 @@ func (s *Session) Start() error {
 	defer interval.Stop()
 
 	// channel that will stream all incoming ICMP packets
-	s.logger.Debug("Creating chhannel of incoming raw packets")
+	s.logger.Debug("Creating channel of incoming raw packets")
 	rawPackets := make(chan *rawPacket, 5)
 	defer close(rawPackets)
 
@@ -182,7 +182,7 @@ func (s *Session) Stop() {
 	<-s.finished
 }
 
-// Address is the resolved address of the target hostname in thhis session
+// Address is the resolved address of the target hostname in this session
 func (s *Session) Address() net.Addr {
 	return s.addr
 }
@@ -372,7 +372,7 @@ func (s *Session) isMaxCountActive() bool {
 	return s.settings.MaxCount > 0
 }
 
-// reachedRequestLimit whethher we ahave reached the request limit of this session.
+// reachedRequestLimit whether we ahave reached the request limit of this session.
 func (s *Session) reachedRequestLimit() bool {
 	// checks if we have to stop somewhere and if we are already there
 	return s.isMaxCountActive() && s.Stats.TotalSent >= s.settings.MaxCount
