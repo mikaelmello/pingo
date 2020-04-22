@@ -40,7 +40,7 @@ var rootCmd = &cobra.Command{
 		go func() {
 			<-c
 			session.Stop()
-			os.Exit(1)
+			os.Exit(0)
 		}()
 
 		err = session.Start()

@@ -142,19 +142,9 @@ func (s *Session) Start() error {
 	}
 	defer conn.Close()
 
-	// timer responsible for shutting down the execution, if enabled
-	s.logger.Debugf("Initializing deadline timer to duration %s", s.getDeadlineDuration())
-	deadline := time.NewTimer(s.getDeadlineDuration())
+	deadline, timeout, interval := s.initTimers()
 	defer deadline.Stop()
-
-	// timer responsible for timing out requests and requiring new ones
-	s.logger.Debugf("Initializing timeout timer to duration %s", s.getTimeoutDuration())
-	timeout := time.NewTimer(s.getTimeoutDuration())
 	defer timeout.Stop()
-
-	// timer responsible for handling the interval between two requests
-	s.logger.Debugf("Initializing interval timer to duration %s", time.Duration(0))
-	interval := time.NewTimer(0)
 	defer interval.Stop()
 
 	// channel that will stream all incoming ICMP packets
@@ -171,103 +161,15 @@ func (s *Session) Start() error {
 	for {
 		select {
 		case <-deadline.C:
-			s.logger.Info("Deadline timer has fired")
-
-			if !s.isDeadlineActive() {
-				s.logger.Info("Ignoring deadline timer because the deadline config has not been activated")
-				continue
-			}
-
-			// deadline is active and triggered, let's end everything
-			s.logger.Info("Requesting to finish the session")
-			s.finishReqs <- true
+			s.handleDeadlineTimer()
 		case <-timeout.C:
-			s.logger.Info("Timeout timer has fired")
-
-			rt := s.buildTimedOutRT()
-			s.processRoundTrip(rt)
-
-			if s.reachedRequestLimit() {
-				s.logger.Info("Not firing more requests as we have reached the set count")
-
-				s.logger.Info("Requesting to finish the session")
-				s.finishReqs <- true
-				continue
-			}
-
-			s.logger.Infof("Resetting interval timer to trigger a new request in %s", s.getIntervalDuration())
-
-			interval.Reset(s.getIntervalDuration())
-			continue
-
+			s.handleTimeoutTimer(interval)
 		case <-interval.C:
-			s.logger.Info("Interval timer has fired")
-
-			s.logger.Infof("Resetting timeout timer to account for a timeout of the reply for the next request",
-				s.getTimeoutDuration())
-
-			timeout.Reset(s.getTimeoutDuration())
-
-			err = s.sendEchoRequest(conn)
-			if err != nil {
-				s.logger.Errorf("Could not send echo request: %w", err)
-
-				// this request already failed, clearing timer and resetting interval
-				s.logger.Infof("Stopping timeout timer and resetting interval timer to trigger a new request in %s",
-					s.getIntervalDuration())
-
-				interval.Reset(s.getIntervalDuration())
-				clearTimer(timeout)
-				continue
-			}
-
+			s.handleIntervalTimer(conn, interval, timeout)
 		case raw := <-rawPackets:
-			s.logger.Tracef("Raw packet received: %x", raw.content[:raw.length])
-
-			// checks whether this ICMP is the reply of the last request and process it
-			rt, err := s.preProcessRawPacket(raw)
-
-			if err != nil {
-				s.logger.Errorf("Could not parse raw packet: %w", err)
-				continue
-			}
-
-			if rt == nil {
-				s.logger.Info("Received raw packet was not a match")
-				continue
-			}
-
-			s.processRoundTrip(rt)
-
-			// checks if we have to stop somewhere and if we are already there
-			if s.reachedRequestLimit() {
-				s.logger.Info("Not firing more requests as we have reached the set count")
-
-				s.logger.Info("Requesting to finish the session")
-				s.finishReqs <- true
-			}
-
-			// it is a match, clearing timeout and resetting interval for next request
-			s.logger.Infof("Stopping timeout timer and resetting interval timer to trigger a new request in %s",
-				s.getIntervalDuration())
-
-			clearTimer(timeout)
-			interval.Reset(s.getIntervalDuration())
-
+			s.handleRawPacket(raw, interval, timeout)
 		case <-s.finishReqs:
-			s.logger.Info("Finish request received")
-
-			s.finishReqs <- true // forwarding to polling if it did not come from there
-			wg.Wait()            // waiting for polling to return
-
-			s.logger.Info("Calling ending callbacks")
-			for _, f := range s.endHandlers {
-				f(s)
-			}
-
-			s.finished <- true // sending to stop, if it came from there
-			s.logger.Info("Session ended")
-			return nil
+			s.handleFinishRequest(&wg)
 		}
 	}
 }
@@ -294,17 +196,144 @@ func (s *Session) AddEndHandler(handler func(*Session)) {
 	s.endHandlers = append(s.endHandlers, handler)
 }
 
-// Returns the deadline setting parsed as a duration in seconds
+func (s *Session) initTimers() (deadline *time.Timer, timeout *time.Timer, interval *time.Timer) {
+	// timer responsible for shutting down the execution, if enabled
+	s.logger.Debugf("Initializing deadline timer to duration %s", s.getDeadlineDuration())
+	deadline = time.NewTimer(s.getDeadlineDuration())
+
+	// timer responsible for timing out requests and requiring new ones
+	s.logger.Debugf("Initializing timeout timer to duration %s", s.getTimeoutDuration())
+	timeout = time.NewTimer(s.getTimeoutDuration())
+
+	// timer responsible for handling the interval between two requests
+	s.logger.Debugf("Initializing interval timer to duration %s", time.Duration(0))
+	interval = time.NewTimer(0)
+
+	return deadline, timeout, interval
+}
+
+// handleTimeoutTimer is responsible for handling when the deadline timer is triggered, checking if the deadline
+// option is active and whether we should terminate the session.
+func (s *Session) handleDeadlineTimer() {
+	s.logger.Info("Deadline timer has fired")
+
+	if !s.isDeadlineActive() {
+		s.logger.Info("Ignoring deadline timer because the deadline config has not been activated")
+		return
+	}
+
+	// deadline is active and triggered, let's end everything
+	s.logger.Info("Requesting to finish the session")
+	s.finishReqs <- true
+}
+
+// handleTimeoutTimer is responsible for handling when the timeout timer is triggered, timing out the latest request
+// and resetting the interval timer.
+func (s *Session) handleTimeoutTimer(interval *time.Timer) {
+
+	s.logger.Info("Timeout timer has fired")
+
+	rt := s.buildTimedOutRT()
+	s.processRoundTrip(rt)
+
+	if s.reachedRequestLimit() {
+		s.logger.Info("Not firing more requests as we have reached the set count")
+
+		s.logger.Info("Requesting to finish the session")
+		s.finishReqs <- true
+		return
+	}
+
+	s.logger.Infof("Resetting interval timer to trigger a new request in %s", s.getIntervalDuration())
+
+	interval.Reset(s.getIntervalDuration())
+}
+
+// handleIntervalTimer is responsible for handling when the interval timer is triggered, sending a new echo request.
+func (s *Session) handleIntervalTimer(conn *icmp.PacketConn, interval *time.Timer, timeout *time.Timer) {
+	s.logger.Info("Interval timer has fired")
+
+	s.logger.Infof("Resetting timeout timer to account for a timeout of the reply for the next request",
+		s.getTimeoutDuration())
+
+	timeout.Reset(s.getTimeoutDuration())
+
+	err := s.sendEchoRequest(conn)
+	if err != nil {
+		s.logger.Errorf("Could not send echo request: %w", err)
+
+		// this request already failed, clearing timer and resetting interval
+		s.logger.Infof("Stopping timeout timer and resetting interval timer to trigger a new request in %s",
+			s.getIntervalDuration())
+
+		interval.Reset(s.getIntervalDuration())
+		clearTimer(timeout)
+	}
+}
+
+// handleRawPacket is responsible for properly handling an incoming raw packet from our connection.
+func (s *Session) handleRawPacket(raw *rawPacket, interval *time.Timer, timeout *time.Timer) {
+
+	s.logger.Tracef("Raw packet received: %x", raw.content[:raw.length])
+
+	// checks whether this ICMP is the reply of the last request and process it
+	rt, err := s.preProcessRawPacket(raw)
+
+	if err != nil {
+		s.logger.Errorf("Could not parse raw packet: %w", err)
+		return
+	}
+
+	if rt == nil {
+		s.logger.Info("Received raw packet was not a match")
+		return
+	}
+
+	s.processRoundTrip(rt)
+
+	// checks if we have to stop somewhere and if we are already there
+	if s.reachedRequestLimit() {
+		s.logger.Info("Not firing more requests as we have reached the set count")
+
+		s.logger.Info("Requesting to finish the session")
+		s.finishReqs <- true
+	}
+
+	// it is a match, clearing timeout and resetting interval for next request
+	s.logger.Infof("Stopping timeout timer and resetting interval timer to trigger a new request in %s",
+		s.getIntervalDuration())
+
+	clearTimer(timeout)
+	interval.Reset(s.getIntervalDuration())
+}
+
+// handleFinishRequest handles where we should finish the session.
+func (s *Session) handleFinishRequest(wg *sync.WaitGroup) {
+	s.logger.Info("Finish request received")
+
+	s.finishReqs <- true // forwarding to polling if it did not come from there
+	wg.Wait()            // waiting for polling to return
+
+	s.logger.Info("Calling ending callbacks")
+	for _, f := range s.endHandlers {
+		f(s)
+	}
+
+	s.finished <- true // sending to stop, if it came from there
+	s.logger.Info("Session ended")
+}
+
+// Returns the deadline setting parsed as a duration in seconds.
 func (s *Session) getDeadlineDuration() time.Duration {
 	return time.Second * time.Duration(s.settings.Deadline)
 }
 
-// Returns the interval setting parsed as a duration in seconds
+// Returns the interval setting parsed as a duration in seconds.
 func (s *Session) getIntervalDuration() time.Duration {
 	return time.Duration(float64(time.Second) * s.settings.Interval)
 }
 
-// Returns the appropriate value for the next timeout parsed as a duration in seconds
+// Returns the appropriate value for the next timeout parsed as a duration in seconds.
 func (s *Session) getTimeoutDuration() time.Duration {
 
 	// if we already have successful pings, our timeout is now 2 times
@@ -316,23 +345,23 @@ func (s *Session) getTimeoutDuration() time.Duration {
 	return time.Second * time.Duration(s.settings.Timeout)
 }
 
-// Returns whether the deadline setting is active
+// Returns whether the deadline setting is active.
 func (s *Session) isDeadlineActive() bool {
 	return s.settings.Deadline > 0
 }
 
-// Returns whether we should stop sending requests some time
+// Returns whether we should stop sending requests some time.
 func (s *Session) isMaxCountActive() bool {
 	return s.settings.MaxCount > 0
 }
 
-// reachedRequestLimit whethher we ahave reached the request limit of this session
+// reachedRequestLimit whethher we ahave reached the request limit of this session.
 func (s *Session) reachedRequestLimit() bool {
 	// checks if we have to stop somewhere and if we are already there
 	return s.isMaxCountActive() && s.totalSent >= s.settings.MaxCount
 }
 
-// buildTimedOutRT builds a round trip object containing data relevant to a timed out request
+// buildTimedOutRT builds a round trip object containing data relevant to a timed out request.
 func (s *Session) buildTimedOutRT() *RoundTrip {
 	return &RoundTrip{
 		TTL:  0,
@@ -344,8 +373,9 @@ func (s *Session) buildTimedOutRT() *RoundTrip {
 	}
 }
 
-// processRoundTrip calls all handlers for a round trip
+// processRoundTrip calls all handlers for a round trip.
 func (s *Session) processRoundTrip(rt *RoundTrip) {
+	s.logger.Info("Calling all handlers for latest round trip")
 	for _, f := range s.rtHandlers {
 		f(rt)
 	}
