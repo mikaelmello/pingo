@@ -43,6 +43,6 @@ func printOnEnd(s *core.Session) {
 
 	fmt.Printf("--- %s ping statistics ---\n", s.CNAME())
 	fmt.Printf("%d packets transmitted, %d received, %.0f%% packet loss, time %s\n",
-		s.Stats.TotalSent, s.Stats.TotalRecv, s.Stats.PktLoss, totalTime)
+		s.Stats.TotalSent, s.Stats.TotalRecv, s.Stats.PktLoss*100, totalTime)
 	fmt.Printf("rtt min/avg/max/mdev = %.3f/%.3f/%.3f/%.3f ms\n", rttMin, rttAvg, rttMax, rttMDev)
 }

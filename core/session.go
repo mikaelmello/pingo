@@ -301,6 +301,13 @@ func (s *Session) handleRawPacket(raw *rawPacket, interval *time.Timer, timeout 
 		return
 	}
 
+	// it is a match, clearing timeout and resetting interval for next request
+	s.logger.Infof("Stopping timeout timer and resetting interval timer to trigger a new request in %s",
+		s.getIntervalDuration())
+
+	clearTimer(timeout)
+	interval.Reset(s.getIntervalDuration())
+
 	s.processRoundTrip(rt)
 
 	// checks if we have to stop somewhere and if we are already there
@@ -310,13 +317,6 @@ func (s *Session) handleRawPacket(raw *rawPacket, interval *time.Timer, timeout 
 		s.logger.Info("Requesting to finish the session")
 		s.finishReqs <- nil
 	}
-
-	// it is a match, clearing timeout and resetting interval for next request
-	s.logger.Infof("Stopping timeout timer and resetting interval timer to trigger a new request in %s",
-		s.getIntervalDuration())
-
-	clearTimer(timeout)
-	interval.Reset(s.getIntervalDuration())
 }
 
 // handleFinishRequest handles where we should finish the session.
@@ -391,12 +391,15 @@ func (s *Session) buildTimedOutRT() *RoundTrip {
 
 // processRoundTrip calls all handlers for a round trip.
 func (s *Session) processRoundTrip(rt *RoundTrip) {
-	rtt := rt.Time.Nanoseconds()
-	if rtt > s.Stats.RTTsMax {
-		s.Stats.RTTsMax = rtt
+
+	if rt.Res == Replied {
+		rtt := rt.Time.Nanoseconds()
+		if rtt > s.Stats.RTTsMax {
+			s.Stats.RTTsMax = rtt
+		}
+		s.Stats.RTTs = append(s.Stats.RTTs, rtt) // stats purposes
+		s.Stats.TotalRecv++
 	}
-	s.Stats.RTTs = append(s.Stats.RTTs, rtt) // stats purposes
-	s.Stats.TotalRecv++
 
 	s.logger.Info("Calling all handlers for latest round trip")
 	for _, f := range s.rtHandlers {
