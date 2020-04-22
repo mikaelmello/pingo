@@ -8,7 +8,7 @@ import (
 	"golang.org/x/net/icmp"
 )
 
-func onStart(s *core.Session, msg *icmp.Message) {
+func printOnStart(s *core.Session, msg *icmp.Message) {
 	msgbytes, err := msg.Marshal(nil)
 	if err != nil {
 		fmt.Printf("PING %s (%s)\n", s.Address(), s.CNAME())
@@ -18,7 +18,7 @@ func onStart(s *core.Session, msg *icmp.Message) {
 	fmt.Printf("PING %s (%s) %d bytes of data\n", s.CNAME(), s.Address(), len(msgbytes))
 }
 
-func onRt(s *core.Session, rt *core.RoundTrip) {
+func printOnRoundTrip(s *core.Session, rt *core.RoundTrip) {
 	switch rt.Res {
 	case core.Replied:
 		fmt.Printf("%d bytes from %s (%s): icmp_seq=%d ttl=%d time=%s\n",
@@ -32,7 +32,7 @@ func onRt(s *core.Session, rt *core.RoundTrip) {
 	}
 }
 
-func onEnd(s *core.Session) {
+func printOnEnd(s *core.Session) {
 	println()
 
 	totalTime := s.Stats.EndTime.Sub(s.Stats.StTime).Truncate(time.Millisecond)

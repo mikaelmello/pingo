@@ -35,9 +35,9 @@ var rootCmd = &cobra.Command{
 			return
 		}
 
-		session.AddStHandler(onStart)
-		session.AddRtHandler(onRt)
-		session.AddEndHandler(onEnd)
+		session.AddStHandler(printOnStart)
+		session.AddRtHandler(printOnRoundTrip)
+		session.AddEndHandler(printOnEnd)
 
 		c := make(chan os.Signal)
 		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
