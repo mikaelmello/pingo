@@ -2,16 +2,7 @@ package core
 
 import (
 	"net"
-	"time"
 )
-
-type roundTrip struct {
-	TTL  int
-	seq  int
-	len  int
-	src  net.IP
-	time time.Duration
-}
 
 // Raw packet read from the connection and used to pass information to the session.
 type rawPacket struct {

@@ -156,14 +156,14 @@ func (s *Session) readFrom(conn *icmp.PacketConn, bytes []byte) (int, *controlMe
 
 // checkRawPacket returns whether the packet matches all requirements to be considered a successful reply.
 // It also modifies the Session state by updating it with info from the packet if it is considered a successful reply.
-func (s *Session) parseRawPacket(raw *rawPacket) (bool, error) {
+func (s *Session) preProcessRawPacket(raw *rawPacket) (*roundTrip, error) {
 	receivedTstp := time.Now()
 
 	s.logger.Infof("Parsing raw packet %x as an ICMP message using protocol %d",
 		raw.content[:raw.length], s.getProtocol())
 	m, err := icmp.ParseMessage(s.getProtocol(), raw.content)
 	if err != nil {
-		return false, fmt.Errorf("error parsing ICMP message: %s", err.Error())
+		return nil, fmt.Errorf("error parsing ICMP message: %s", err.Error())
 	}
 
 	isEchoReply := m.Code == echoCode && (m.Type == ipv4.ICMPTypeEchoReply || m.Type == ipv6.ICMPTypeEchoReply)
@@ -173,7 +173,7 @@ func (s *Session) parseRawPacket(raw *rawPacket) (bool, error) {
 	if !isEchoReply && !isTimeExceeded {
 		// Not an echo reply or time exceeded, ignore it
 		s.logger.Debugf("Received message that is not an echo reply or time exceeded, code %d and type %d", m.Code, m.Type)
-		return false, nil
+		return nil, nil
 	}
 
 	// cast body as icmp.Echo
@@ -192,7 +192,7 @@ func (s *Session) parseRawPacket(raw *rawPacket) (bool, error) {
 		if echoBody.ID != s.id {
 			s.logger.Debugf("TimeExceeded message does not match last sent echo request, parsed id differs. Expected: %d."+
 				" Actual: %d", s.id, echoBody.ID)
-			return false, nil
+			return nil, nil
 		}
 		s.logger.Debugf("TimeExceeded message echoBody ID matches last sent echo request. Expected: %d.", s.id)
 
@@ -200,14 +200,22 @@ func (s *Session) parseRawPacket(raw *rawPacket) (bool, error) {
 		if echoBody.Seq != s.lastSequence {
 			s.logger.Debugf("TimeExceeded message does not match last sent echo request, parsed seq differs. Expected: %d."+
 				" Actual: %d", s.lastSequence, echoBody.Seq)
-			return false, nil
+			return nil, nil
 		}
 		s.logger.Debugf("TimeExceeded message echoBody Seq matches last sent echo request. Expected: %d.", s.lastSequence)
 
 		s.logger.Info("TimeExceeded matches last sent echo request.")
 
-		println(raw.cm.Src.String(), raw.cm.TTL)
-		return true, nil
+		rt := &roundTrip{
+			ttl:  raw.cm.TTL,
+			src:  raw.cm.Src,
+			time: time.Duration(0),
+			len:  raw.length,
+			seq:  echoBody.Seq,
+			res:  TTLExpired,
+		}
+
+		return rt, nil
 	case *icmp.Echo:
 		s.logger.Debug("Received an echo reply message")
 
@@ -215,13 +223,13 @@ func (s *Session) parseRawPacket(raw *rawPacket) (bool, error) {
 			// Check if reply from same ID
 			if body.ID != s.id {
 				s.logger.Debugf("Echo reply body ID does not match session ID. Expected: %d. Actual: %d.", s.id, body.ID)
-				return false, nil
+				return nil, nil
 			}
 			s.logger.Debugf("Echo reply body ID matches last sent echo request. Expected: %d.", s.id)
 		}
 
 		if len(body.Data) < dataLength {
-			return false, fmt.Errorf("missing data, %d bytes out of %d", len(body.Data), dataLength)
+			return nil, fmt.Errorf("missing data, %d bytes out of %d", len(body.Data), dataLength)
 		}
 
 		// retrieve the info we serialized
@@ -231,7 +239,7 @@ func (s *Session) parseRawPacket(raw *rawPacket) (bool, error) {
 		if body.Seq != s.lastSequence {
 			s.logger.Debugf("Echo reply body Seq does not match session's last sequence. Expected: %d. Actual: %d.",
 				s.lastSequence, body.Seq)
-			return false, nil
+			return nil, nil
 		}
 		s.logger.Debugf("Echo reply body Seq matches last sent echo request. Expected: %d.", s.lastSequence)
 
@@ -239,7 +247,7 @@ func (s *Session) parseRawPacket(raw *rawPacket) (bool, error) {
 		if bigID != s.bigID {
 			s.logger.Debugf("Echo reply body data big ID does not match session's big ID. Expected: %d. Actual: %d.",
 				s.bigID, bigID)
-			return false, nil
+			return nil, nil
 		}
 		s.logger.Debugf("Echo reply body data bigID matches session's big ID. Expected: %d.", s.bigID)
 
@@ -258,9 +266,18 @@ func (s *Session) parseRawPacket(raw *rawPacket) (bool, error) {
 
 		s.totalRecv++
 
-		return true, nil
+		rt := &roundTrip{
+			ttl:  raw.cm.TTL,
+			src:  raw.cm.Src,
+			time: rttduration,
+			len:  raw.length,
+			seq:  body.Seq,
+			res:  Replied,
+		}
+
+		return rt, nil
 	default:
-		return false, fmt.Errorf("invalid body type: '%T'", body)
+		return nil, fmt.Errorf("invalid body type: '%T'", body)
 	}
 }
 

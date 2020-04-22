@@ -166,6 +166,9 @@ func (s *Session) Start() error {
 		case <-timeout.C:
 			s.logger.Info("Timeout timer has fired")
 
+			rt := s.buildTimedOutRT()
+			s.processRoundTrip(rt)
+
 			if s.reachedRequestLimit() {
 				s.logger.Info("Not firing more requests as we have reached the set count")
 
@@ -204,16 +207,19 @@ func (s *Session) Start() error {
 			s.logger.Tracef("Raw packet received: %x", raw.content[:raw.length])
 
 			// checks whether this ICMP is the reply of the last request and process it
-			match, err := s.parseRawPacket(raw)
+			rt, err := s.preProcessRawPacket(raw)
 
-			if err != nil || !match {
-				if err != nil {
-					s.logger.Errorf("Could not parse raw packet: %w", err)
-				} else {
-					s.logger.Info("Received raw packet was not a match")
-				}
+			if err != nil {
+				s.logger.Errorf("Could not parse raw packet: %w", err)
 				continue
 			}
+
+			if rt == nil {
+				s.logger.Info("Received raw packet was not a match")
+				continue
+			}
+
+			s.processRoundTrip(rt)
 
 			// checks if we have to stop somewhere and if we are already there
 			if s.reachedRequestLimit() {
@@ -286,4 +292,18 @@ func (s *Session) isMaxCountActive() bool {
 func (s *Session) reachedRequestLimit() bool {
 	// checks if we have to stop somewhere and if we are already there
 	return s.isMaxCountActive() && s.totalSent >= s.settings.MaxCount
+}
+
+func (s *Session) buildTimedOutRT() *roundTrip {
+	return &roundTrip{
+		ttl:  0,
+		src:  nil,
+		time: s.getTimeoutDuration(),
+		len:  0,
+		seq:  s.lastSequence,
+		res:  TimedOut,
+	}
+}
+
+func (s *Session) processRoundTrip(rt *roundTrip) {
 }
