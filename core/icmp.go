@@ -26,40 +26,14 @@ const (
 // sendEchoRequest sends an echo request to the address defined in the Session receiving as a parameter
 // the open connection with the target host.
 func (s *Session) sendEchoRequest(conn *icmp.PacketConn) error {
-
 	s.logger.Infof("Making a new echo request to address %s", s.addr.String())
 
-	now := time.Now()
-
-	bigID := uint64ToBytes(s.bigID) // ensure same source
-	tstp := unixNanoToBytes(now)    // calculate rtt
-	data := append(bigID, tstp...)
-
-	body := &icmp.Echo{
-		ID:   s.id,
-		Seq:  s.lastSequence + 1, // verify pair of request-replies
-		Data: data,
-	}
-
-	s.logger.Debugf("Body id %d, seq %d, bigID %d, tstp %s", s.bigID, now, s.id, s.lastSequence+1)
-	s.logger.Tracef("Body data %x", data)
-
-	msg := &icmp.Message{
-		Type: s.getICMPType(),
-		Code: echoCode,
-		Body: body,
-	}
-	s.logger.Debugf("ICMP message with type %s and code %d", s.getICMPType(), echoCode)
-
-	bytesmsg, err := msg.Marshal(nil)
-
-	s.logger.Tracef("ICMP message marshalled is %x", bytesmsg)
-
+	bytesmsg, err := s.buildEchoRequest().Marshal(nil)
 	if err != nil {
 		return fmt.Errorf("could not marshal ICMP message with Echo body: %w", err)
 	}
 
-	s.logger.Infof("Writing ICMP message to address %s", s.addr.String())
+	s.logger.Infof("Writing ICMP message %x to address %s", bytesmsg, s.addr.String())
 	_, err = conn.WriteTo(bytesmsg, s.addr)
 
 	// request failing or not, we must update these values
@@ -73,6 +47,33 @@ func (s *Session) sendEchoRequest(conn *icmp.PacketConn) error {
 	}
 
 	return nil
+}
+
+func (s *Session) buildEchoRequest() *icmp.Message {
+	s.logger.Tracef("Building new echho request")
+
+	now := time.Now()
+	bigID := uint64ToBytes(s.bigID) // ensure same source
+	tstp := unixNanoToBytes(now)    // calculate rtt
+	data := append(bigID, tstp...)
+
+	body := &icmp.Echo{
+		ID:   s.id,
+		Seq:  s.lastSequence + 1, // verify pair of request-replies
+		Data: data,
+	}
+
+	s.logger.Tracef("Body id %d, seq %d, bigID %d, tstp %s", s.bigID, now, s.id, s.lastSequence+1)
+	s.logger.Tracef("Body data %x", data)
+
+	msg := &icmp.Message{
+		Type: s.getICMPType(),
+		Code: echoCode,
+		Body: body,
+	}
+	s.logger.Tracef("ICMP message with type %s and code %d", s.getICMPType(), echoCode)
+
+	return msg
 }
 
 // pollICMP constantly polls the connection to receive and process any replies.
