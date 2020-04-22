@@ -129,7 +129,7 @@ func (s *Session) Start() error {
 
 	if !s.settings.IsPrivileged {
 		s.logger.Warnf("You are running as non-privileged, meaning that it is not possible to receive TimeExceeded ICMP"+
-			" requests. Requests that exceed the configured TTL of %d will be treated as timed out", s.settings.TTL)
+			" messages. Echo requests that exceed the configured TTL of %d will be treated as timed out", s.settings.TTL)
 	}
 
 	s.logger.Info("Calling start callbacks")
