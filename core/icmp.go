@@ -64,7 +64,7 @@ func (s *Session) buildEchoRequest() *icmp.Message {
 		Data: data,
 	}
 
-	s.logger.Tracef("Body id %d, seq %d, bigID %d, tstp %s", s.bigID, now, s.id, s.lastSequence+1)
+	s.logger.Tracef("Body id %d, seq %d, bigID %d, tstp %s", s.id, s.lastSequence+1, s.bigID, now)
 	s.logger.Tracef("Body data %x", data)
 
 	msg := &icmp.Message{
@@ -95,7 +95,7 @@ func (s *Session) pollConnection(wg *sync.WaitGroup, conn *icmp.PacketConn, recv
 
 			s.logger.Tracef("Setting read deadline to %s", maxwait)
 			if err := conn.SetReadDeadline(time.Now().Add(maxwait)); err != nil {
-				s.logger.Fatalf("Error while setting read deadline, finishing polling and session: %w", err)
+				s.logger.Fatalf("Error while setting read deadline, finishing polling and session: %s", err.Error())
 
 				// request to finish
 				s.finishReqs <- true
@@ -110,7 +110,7 @@ func (s *Session) pollConnection(wg *sync.WaitGroup, conn *icmp.PacketConn, recv
 						s.logger.Trace("Read deadline has expired, trying again")
 						continue
 					} else {
-						s.logger.Fatalf("Error while reading from connection, finishing polling and session: %w", err)
+						s.logger.Fatalf("Error while reading from connection, finishing polling and session: %s", err.Error())
 						// request to finish
 						s.finishReqs <- true
 						return

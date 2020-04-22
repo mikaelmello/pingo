@@ -273,7 +273,7 @@ func (s *Session) handleIntervalTimer(conn *icmp.PacketConn, interval *time.Time
 
 	err := s.sendEchoRequest(conn)
 	if err != nil {
-		s.logger.Errorf("Could not send echo request: %w", err)
+		s.logger.Errorf("Could not send echo request: %s", err)
 
 		// this request already failed, clearing timer and resetting interval
 		s.logger.Infof("Stopping timeout timer and resetting interval timer to trigger a new request in %s",
@@ -293,7 +293,7 @@ func (s *Session) handleRawPacket(raw *rawPacket, interval *time.Timer, timeout 
 	rt, err := s.preProcessRawPacket(raw)
 
 	if err != nil {
-		s.logger.Errorf("Could not parse raw packet: %w", err)
+		s.logger.Errorf("Could not parse raw packet: %s", err)
 		return
 	}
 
