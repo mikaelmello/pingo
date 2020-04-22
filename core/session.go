@@ -42,7 +42,7 @@ type Session struct {
 	logger *log.Logger
 
 	// finishRequest is the channel that will signal a request to end the session run.
-	finishReqs chan bool
+	finishReqs chan error
 
 	// finished is the channel that will signal the end of the session run.
 	finished chan bool
@@ -103,7 +103,7 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 	session := &Session{
 		Stats:        NewStatistics(),
 		lastSequence: 0,
-		finishReqs:   make(chan bool, 1),
+		finishReqs:   make(chan error, 1),
 		finished:     make(chan bool, 1),
 		id:           r.Intn(math.MaxUint16),
 		bigID:        r.Uint64(),
@@ -169,9 +169,8 @@ func (s *Session) Start() error {
 			s.handleIntervalTimer(conn, interval, timeout)
 		case raw := <-rawPackets:
 			s.handleRawPacket(raw, interval, timeout)
-		case <-s.finishReqs:
-			s.handleFinishRequest(&wg)
-			return nil
+		case err := <-s.finishReqs:
+			return s.handleFinishRequest(err, &wg)
 		}
 	}
 }
@@ -179,7 +178,7 @@ func (s *Session) Start() error {
 // Stop finishes the execution of the session
 func (s *Session) Stop() {
 	s.logger.Info("Requesting to end session")
-	s.finishReqs <- true
+	s.finishReqs <- nil
 	<-s.finished
 }
 
@@ -237,7 +236,7 @@ func (s *Session) handleDeadlineTimer() {
 
 	// deadline is active and triggered, let's end everything
 	s.logger.Info("Requesting to finish the session")
-	s.finishReqs <- true
+	s.finishReqs <- nil
 }
 
 // handleTimeoutTimer is responsible for handling when the timeout timer is triggered, timing out the latest request
@@ -253,7 +252,7 @@ func (s *Session) handleTimeoutTimer(interval *time.Timer) {
 		s.logger.Info("Not firing more requests as we have reached the set count")
 
 		s.logger.Info("Requesting to finish the session")
-		s.finishReqs <- true
+		s.finishReqs <- nil
 		return
 	}
 
@@ -309,7 +308,7 @@ func (s *Session) handleRawPacket(raw *rawPacket, interval *time.Timer, timeout 
 		s.logger.Info("Not firing more requests as we have reached the set count")
 
 		s.logger.Info("Requesting to finish the session")
-		s.finishReqs <- true
+		s.finishReqs <- nil
 	}
 
 	// it is a match, clearing timeout and resetting interval for next request
@@ -321,11 +320,15 @@ func (s *Session) handleRawPacket(raw *rawPacket, interval *time.Timer, timeout 
 }
 
 // handleFinishRequest handles where we should finish the session.
-func (s *Session) handleFinishRequest(wg *sync.WaitGroup) {
+func (s *Session) handleFinishRequest(err error, wg *sync.WaitGroup) error {
+	if err != nil {
+		return err
+	}
+
 	s.logger.Info("Finish request received")
 
-	s.finishReqs <- true // forwarding to polling if it did not come from there
-	wg.Wait()            // waiting for polling to return
+	s.finishReqs <- nil // forwarding to polling if it did not come from there
+	wg.Wait()           // waiting for polling to return
 
 	s.logger.Info("Calling ending callbacks")
 	for _, f := range s.endHandlers {
@@ -334,6 +337,7 @@ func (s *Session) handleFinishRequest(wg *sync.WaitGroup) {
 
 	s.finished <- true // sending to stop, if it came from there
 	s.logger.Info("Session ended")
+	return nil
 }
 
 // Returns the deadline setting parsed as a duration in seconds.

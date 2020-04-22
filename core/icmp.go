@@ -95,10 +95,7 @@ func (s *Session) pollConnection(wg *sync.WaitGroup, conn *icmp.PacketConn, recv
 
 			s.logger.Tracef("Setting read deadline to %s", maxwait)
 			if err := conn.SetReadDeadline(time.Now().Add(maxwait)); err != nil {
-				s.logger.Fatalf("Error while setting read deadline, finishing polling and session: %s", err.Error())
-
-				// request to finish
-				s.finishReqs <- true
+				s.finishReqs <- fmt.Errorf("Error while setting read deadline, finishing polling and session: %w", err)
 				return
 			}
 
@@ -110,9 +107,8 @@ func (s *Session) pollConnection(wg *sync.WaitGroup, conn *icmp.PacketConn, recv
 						s.logger.Trace("Read deadline has expired, trying again")
 						continue
 					} else {
-						s.logger.Fatalf("Error while reading from connection, finishing polling and session: %s", err.Error())
 						// request to finish
-						s.finishReqs <- true
+						s.finishReqs <- fmt.Errorf("Error while reading from connection, finishing polling and session: %s", err)
 						return
 					}
 				}
