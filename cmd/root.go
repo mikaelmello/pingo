@@ -35,6 +35,10 @@ var rootCmd = &cobra.Command{
 			return
 		}
 
+		session.AddStHandler(onStart)
+		session.AddRtHandler(onRt)
+		session.AddEndHandler(onEnd)
+
 		c := make(chan os.Signal)
 		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 		go func() {
