@@ -1,6 +1,10 @@
 package cmd
 
 import (
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/mikaelmello/pingo/core"
 	"github.com/spf13/cobra"
 )
@@ -24,11 +28,20 @@ var rootCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+
 		session, err := core.NewSession(args[0], settings)
 		if err != nil {
 			println(err.Error())
 			return
 		}
+
+		c := make(chan os.Signal)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-c
+			session.Stop()
+			os.Exit(1)
+		}()
 
 		err = session.Start()
 		if err != nil {
@@ -59,6 +72,5 @@ func init() {
 
 // Execute executes the root command of the application.
 func Execute() error {
-
 	return rootCmd.Execute()
 }
