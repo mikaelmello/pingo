@@ -209,7 +209,6 @@ func (s *Session) preProcessRawPacket(raw *rawPacket) (*RoundTrip, error) {
 
 		rt := &RoundTrip{
 			TTL:  raw.cm.TTL,
-			Src:  raw.cm.Src,
 			Time: time.Duration(0),
 			Len:  raw.length,
 			Seq:  echoBody.Seq,
@@ -267,7 +266,6 @@ func (s *Session) preProcessRawPacket(raw *rawPacket) (*RoundTrip, error) {
 
 		rt := &RoundTrip{
 			TTL:  raw.cm.TTL,
-			Src:  raw.cm.Src,
 			Time: rttduration,
 			Len:  raw.length,
 			Seq:  body.Seq,

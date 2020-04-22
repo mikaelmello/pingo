@@ -41,6 +41,9 @@ type Session struct {
 	// addr contains the net.Addr of the target host
 	addr net.Addr
 
+	// string contains the cname (if applicable) of the target host
+	cname string
+
 	// isIPv4 contains whether the stored address is IPv4 or not (IPv6)
 	isIPv4 bool
 
@@ -55,7 +58,7 @@ type Session struct {
 
 	// rtHandlers are the callback functions called when a round trip happens.
 	// The function parameters are the session.
-	rtHandlers []func(*RoundTrip)
+	rtHandlers []func(*Session, *RoundTrip)
 
 	// stHandlers are the callback functions called when the session starts.
 	// The function parameters are the session and a sample first echo request.
@@ -80,6 +83,11 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 	logger.Debug("Settings configured correctly")
 
 	logger.Infof("Resolving address %s", address)
+
+	cname, err := net.LookupCNAME(address)
+	if err != nil {
+		return nil, fmt.Errorf("error while looking up cname of address %s: %w", address, err)
+	}
 
 	ipaddr, err := net.ResolveIPAddr("ip", address)
 	if err != nil {
@@ -112,6 +120,7 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 		bigID:        r.Uint64(),
 		isIPv4:       ipv4,
 		addr:         resAddr,
+		cname:        cname,
 		settings:     settings,
 		logger:       logger,
 	}
@@ -170,6 +179,7 @@ func (s *Session) Start() error {
 			s.handleRawPacket(raw, interval, timeout)
 		case <-s.finishReqs:
 			s.handleFinishRequest(&wg)
+			return nil
 		}
 	}
 }
@@ -182,7 +192,7 @@ func (s *Session) Stop() {
 }
 
 // AddRtHandler adds a handler function that will be called after an echo request is replied or expires
-func (s *Session) AddRtHandler(handler func(*RoundTrip)) {
+func (s *Session) AddRtHandler(handler func(*Session, *RoundTrip)) {
 	s.rtHandlers = append(s.rtHandlers, handler)
 }
 
@@ -253,7 +263,7 @@ func (s *Session) handleTimeoutTimer(interval *time.Timer) {
 func (s *Session) handleIntervalTimer(conn *icmp.PacketConn, interval *time.Timer, timeout *time.Timer) {
 	s.logger.Info("Interval timer has fired")
 
-	s.logger.Infof("Resetting timeout timer to account for a timeout of the reply for the next request",
+	s.logger.Infof("Resetting timeout timer to account for a timeout (%s) of the reply for the next request",
 		s.getTimeoutDuration())
 
 	timeout.Reset(s.getTimeoutDuration())
@@ -365,7 +375,6 @@ func (s *Session) reachedRequestLimit() bool {
 func (s *Session) buildTimedOutRT() *RoundTrip {
 	return &RoundTrip{
 		TTL:  0,
-		Src:  nil,
 		Time: s.getTimeoutDuration(),
 		Len:  0,
 		Seq:  s.lastSequence,
@@ -377,6 +386,6 @@ func (s *Session) buildTimedOutRT() *RoundTrip {
 func (s *Session) processRoundTrip(rt *RoundTrip) {
 	s.logger.Info("Calling all handlers for latest round trip")
 	for _, f := range s.rtHandlers {
-		f(rt)
+		f(s, rt)
 	}
 }
