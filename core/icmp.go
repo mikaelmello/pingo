@@ -37,10 +37,10 @@ func (s *Session) sendEchoRequest(conn *icmp.PacketConn) error {
 	_, err = conn.WriteTo(bytesmsg, s.addr)
 
 	// request failing or not, we must update these values
-	s.totalSent++
+	s.Stats.TotalSent++
 	s.lastSequence++
 	s.logger.Infof("Incrementing number of packages sent and of last sequence to %d and %d respectively",
-		s.totalSent, s.lastSequence)
+		s.Stats.TotalSent, s.lastSequence)
 
 	if err != nil {
 		return fmt.Errorf("error while sending echo request: %w", err)
@@ -252,17 +252,9 @@ func (s *Session) preProcessRawPacket(raw *rawPacket) (*RoundTrip, error) {
 		s.logger.Debugf("Echo reply body data bigID matches session's big ID. Expected: %d.", s.bigID)
 
 		rttduration := receivedTstp.Sub(tstp)
-		rtt := rttduration.Nanoseconds()
 
 		s.logger.Infof("Echo reply matches last sent echo request. RTT is %s, TTL is %d and source address is %s",
 			rttduration, raw.cm.TTL, raw.cm.Src.String())
-
-		if rtt > s.maxRtt {
-			s.maxRtt = rtt
-		}
-		s.rtts = append(s.rtts, rtt) // stats purposes
-
-		s.totalRecv++
 
 		rt := &RoundTrip{
 			TTL:  raw.cm.TTL,

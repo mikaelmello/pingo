@@ -14,6 +14,9 @@ import (
 
 // Session is an aggregation of ping executions
 type Session struct {
+	// Stats contain the overall statistics of the session
+	Stats *Statistics
+
 	settings *Settings
 
 	// id is the session id used in the echo body.
@@ -25,18 +28,6 @@ type Session struct {
 
 	// lastSequence is the sequence number of the last sent echo request.
 	lastSequence int
-
-	// totalSent is the total amount of echo requests sent in this session.
-	totalSent int
-
-	// totalRecv is the total amount of matching echo replies received in the appropriate time in this session.
-	totalRecv int
-
-	// maxRtt is the largest round-trip time among all successful replies of this session.
-	maxRtt int64
-
-	// rtts contains the round-trip times of all successful replies of this session.
-	rtts []int64
 
 	// addr contains the net.Addr of the target host
 	addr net.Addr
@@ -110,10 +101,8 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 	r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 
 	session := &Session{
+		Stats:        NewStatistics(),
 		lastSequence: 0,
-		totalSent:    0,
-		totalRecv:    0,
-		maxRtt:       0,
 		finishReqs:   make(chan bool, 1),
 		finished:     make(chan bool, 1),
 		id:           r.Intn(math.MaxUint16),
@@ -124,6 +113,9 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 		settings:     settings,
 		logger:       logger,
 	}
+
+	session.AddStHandler(initStatsCb)
+	session.AddEndHandler(finishStatsCb)
 
 	logger.Infof("Created session with id %d, bigID %d, ipv4 %t, addr %s",
 		session.id, session.bigID, session.isIPv4, session.addr.String())
@@ -191,6 +183,16 @@ func (s *Session) Stop() {
 	<-s.finished
 }
 
+// Address is the resolved address of the target hostname in thhis session
+func (s *Session) Address() net.Addr {
+	return s.addr
+}
+
+// CNAME is the CNAME of the input address
+func (s *Session) CNAME() string {
+	return s.cname
+}
+
 // AddRtHandler adds a handler function that will be called after an echo request is replied or expires
 func (s *Session) AddRtHandler(handler func(*Session, *RoundTrip)) {
 	s.rtHandlers = append(s.rtHandlers, handler)
@@ -206,6 +208,7 @@ func (s *Session) AddEndHandler(handler func(*Session)) {
 	s.endHandlers = append(s.endHandlers, handler)
 }
 
+// initTimers initializes all timers used to manage the session flow
 func (s *Session) initTimers() (deadline *time.Timer, timeout *time.Timer, interval *time.Timer) {
 	// timer responsible for shutting down the execution, if enabled
 	s.logger.Debugf("Initializing deadline timer to duration %s", s.getDeadlineDuration())
@@ -349,8 +352,8 @@ func (s *Session) getTimeoutDuration() time.Duration {
 	// if we already have successful pings, our timeout is now 2 times
 	// the longest registered rtt, as the original ping does
 	// otherwise, we use the standard timeout
-	if len(s.rtts) > 0 {
-		return time.Duration(2 * s.maxRtt)
+	if len(s.Stats.RTTs) > 0 {
+		return time.Duration(2 * s.Stats.RTTsMax)
 	}
 	return time.Second * time.Duration(s.settings.Timeout)
 }
@@ -368,7 +371,7 @@ func (s *Session) isMaxCountActive() bool {
 // reachedRequestLimit whethher we ahave reached the request limit of this session.
 func (s *Session) reachedRequestLimit() bool {
 	// checks if we have to stop somewhere and if we are already there
-	return s.isMaxCountActive() && s.totalSent >= s.settings.MaxCount
+	return s.isMaxCountActive() && s.Stats.TotalSent >= s.settings.MaxCount
 }
 
 // buildTimedOutRT builds a round trip object containing data relevant to a timed out request.
@@ -384,6 +387,13 @@ func (s *Session) buildTimedOutRT() *RoundTrip {
 
 // processRoundTrip calls all handlers for a round trip.
 func (s *Session) processRoundTrip(rt *RoundTrip) {
+	rtt := rt.Time.Nanoseconds()
+	if rtt > s.Stats.RTTsMax {
+		s.Stats.RTTsMax = rtt
+	}
+	s.Stats.RTTs = append(s.Stats.RTTs, rtt) // stats purposes
+	s.Stats.TotalRecv++
+
 	s.logger.Info("Calling all handlers for latest round trip")
 	for _, f := range s.rtHandlers {
 		f(s, rt)
