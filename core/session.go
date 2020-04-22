@@ -385,6 +385,7 @@ func (s *Session) buildTimedOutRT() *RoundTrip {
 		Time: s.getTimeoutDuration(),
 		Len:  0,
 		Seq:  s.lastSequence,
+		Src:  nil,
 		Res:  TimedOut,
 	}
 }

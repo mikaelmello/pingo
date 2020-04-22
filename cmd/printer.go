@@ -21,19 +21,18 @@ func printOnStart(s *core.Session, msg *icmp.Message) {
 func printOnRoundTrip(s *core.Session, rt *core.RoundTrip) {
 	switch rt.Res {
 	case core.Replied:
-		fmt.Printf("%d bytes from %s (%s): icmp_seq=%d ttl=%d time=%s\n",
-			rt.Len, s.CNAME(), s.Address(), rt.Seq, rt.TTL, rt.Time.Truncate(time.Microsecond))
+		fmt.Printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%s\n",
+			rt.Len, rt.Src, rt.Seq, rt.TTL, rt.Time.Truncate(time.Microsecond))
 	case core.TimedOut:
-		fmt.Printf("0 bytes from %s (%s): icmp_seq=%d time=%s timeout expired\n",
-			s.CNAME(), s.Address(), rt.Seq, rt.Time)
+		fmt.Printf("icmp_seq=%d time=%s timeout expired\n", rt.Seq, rt.Time)
 	case core.TTLExpired:
-		fmt.Printf("From %s (%s): icmp_seq=%d time to live exceeded\n",
-			s.CNAME(), s.Address(), rt.Seq)
+		fmt.Printf("From %s: icmp_seq=%d time to live exceeded\n", rt.Src, rt.Seq)
 	}
 }
 
 func printOnEnd(s *core.Session) {
 	println()
+	// cname, err := net.LookupCNAME(address)
 
 	totalTime := s.Stats.EndTime.Sub(s.Stats.StTime).Truncate(time.Millisecond)
 	rttMin := float64(s.Stats.RTTsMin) / float64(time.Millisecond)
