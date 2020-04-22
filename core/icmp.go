@@ -79,10 +79,12 @@ func (s *Session) sendEchoRequest(conn *icmp.PacketConn) error {
 func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<- *rawPacket) {
 	defer wg.Done()
 
+	// here we are sure that we will never consume a finishReqs produced by us, as we always return
+	// after producing
 	for {
 		select {
-		case <-s.isFinished:
-			s.logger.Info("Main session loop has finished, ending polling for new packets")
+		case <-s.finishReqs:
+			s.logger.Info("Received request to finish, ending and forwarding")
 			return
 		default:
 			buffer := make([]byte, 128)
@@ -92,8 +94,9 @@ func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<
 			s.logger.Tracef("Setting read deadline to %s", maxwait)
 			if err := conn.SetReadDeadline(time.Now().Add(maxwait)); err != nil {
 				s.logger.Fatalf("Error while setting read deadline, finishing polling and session: %w", err)
-				// signal main loop and return
-				s.isFinished <- true
+
+				// request to finish
+				s.finishReqs <- true
 				return
 			}
 
@@ -106,8 +109,8 @@ func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<
 						continue
 					} else {
 						s.logger.Fatalf("Error while reading from connection, finishing polling and session: %w", err)
-						// signal main loop and return
-						s.isFinished <- true
+						// request to finish
+						s.finishReqs <- true
 						return
 					}
 				}

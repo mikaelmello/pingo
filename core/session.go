@@ -43,11 +43,14 @@ type Session struct {
 	// isIPv4 contains whether the stored address is IPv4 or not (IPv6)
 	isIPv4 bool
 
-	// isFinished is the channel that will signal the end of the session run.
-	isFinished chan bool
-
 	// logger is an instance of logrus used to log activities related to this session
 	logger *log.Logger
+
+	// finishRequest is the channel that will signal a request to end the session run.
+	finishReqs chan bool
+
+	// finished is the channel that will signal the end of the session run.
+	finished chan bool
 }
 
 // NewSession creates a new Session
@@ -55,17 +58,21 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 	logger := NewLogger(settings.LoggingLevel)
 
 	logger.Debug("Validating settings")
+
 	err := settings.validate()
 	if err != nil {
 		return nil, fmt.Errorf("invalid settings: %w", err)
 	}
+
 	logger.Debug("Settings configured correctly")
 
 	logger.Infof("Resolving address %s", address)
+
 	ipaddr, err := net.ResolveIPAddr("ip", address)
 	if err != nil {
 		return nil, fmt.Errorf("error while resolving address %s: %w", address, err)
 	}
+
 	logger.Infof("Address %s resolved to IP Address %s", address, ipaddr.String())
 
 	var resAddr net.Addr = ipaddr
@@ -86,7 +93,8 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 		totalSent:    0,
 		totalRecv:    0,
 		maxRtt:       0,
-		isFinished:   make(chan bool, 1),
+		finishReqs:   make(chan bool, 1),
+		finished:     make(chan bool, 1),
 		id:           r.Intn(math.MaxUint16),
 		bigID:        r.Uint64(),
 		isIPv4:       ipv4,
@@ -103,7 +111,7 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 
 // Start starts the sequence of pings
 func (s *Session) Start() error {
-	defer close(s.isFinished)
+	defer close(s.finishReqs)
 
 	if !s.settings.IsPrivileged {
 		s.logger.Warnf("You are running as non-privileged, meaning that it is not possible to receive TimeExceeded ICMP"+
@@ -153,26 +161,17 @@ func (s *Session) Start() error {
 			}
 
 			// deadline is active and triggered, let's end everything
-			s.logger.Info("Finishing session and waiting for the polling to return")
-
-			s.isFinished <- true
-			wg.Wait()
-
-			s.logger.Info("Session ended")
-			return nil
-
+			s.logger.Info("Requesting to finish the session")
+			s.finishReqs <- true
 		case <-timeout.C:
 			s.logger.Info("Timeout timer has fired")
 
 			if s.reachedRequestLimit() {
 				s.logger.Info("Not firing more requests as we have reached the set count")
-				s.logger.Info("Finishing session and waiting for the polling to return")
 
-				s.isFinished <- true
-				wg.Wait()
-
-				s.logger.Info("Session ended")
-				return nil
+				s.logger.Info("Requesting to finish the session")
+				s.finishReqs <- true
+				continue
 			}
 
 			s.logger.Infof("Resetting interval timer to trigger a new request in %s", s.getIntervalDuration())
@@ -219,13 +218,9 @@ func (s *Session) Start() error {
 			// checks if we have to stop somewhere and if we are already there
 			if s.reachedRequestLimit() {
 				s.logger.Info("Not firing more requests as we have reached the set count")
-				s.logger.Info("Finishing session and waiting for the polling to return")
 
-				s.isFinished <- true
-				wg.Wait()
-
-				s.logger.Info("Session ended")
-				return nil
+				s.logger.Info("Requesting to finish the session")
+				s.finishReqs <- true
 			}
 
 			// it is a match, clearing timeout and resetting interval for next request
@@ -235,11 +230,12 @@ func (s *Session) Start() error {
 			clearTimer(timeout)
 			interval.Reset(s.getIntervalDuration())
 
-		case <-s.isFinished:
-			s.logger.Info("Stop request received by either the polling or stop method, ending session")
+		case <-s.finishReqs:
+			s.logger.Info("Finish request received")
 
-			s.isFinished <- true // in case isFinished has not been signaled (stop call for example)
-			wg.Wait()
+			s.finishReqs <- true // forwarding to polling if it did not come from there
+			wg.Wait()            // waiting for polling to return
+			s.finished <- true   // sending to stop, if it came from there
 
 			s.logger.Info("Session ended")
 			return nil
@@ -250,7 +246,8 @@ func (s *Session) Start() error {
 // Stop finishes the execution of the session
 func (s *Session) Stop() {
 	s.logger.Info("Requesting to end session")
-	s.isFinished <- true
+	s.finishReqs <- true
+	<-s.finished
 }
 
 // Returns the deadline setting parsed as a duration in seconds
