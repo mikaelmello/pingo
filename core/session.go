@@ -148,7 +148,7 @@ func (s *Session) Start() error {
 	s.logger.Info("Calling goroutine to poll for incoming raw packets")
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go s.pollICMP(&wg, conn, rawPackets)
+	go s.pollConnection(&wg, conn, rawPackets)
 
 	for {
 		select {

@@ -76,8 +76,8 @@ func (s *Session) buildEchoRequest() *icmp.Message {
 	return msg
 }
 
-// pollICMP constantly polls the connection to receive and process any replies.
-func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<- *rawPacket) {
+// pollConnection constantly polls the connection to receive and process any replies.
+func (s *Session) pollConnection(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<- *rawPacket) {
 	defer wg.Done()
 
 	// here we are sure that we will never consume a finishReqs produced by us, as we always return
