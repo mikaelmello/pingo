@@ -9,7 +9,7 @@ GOLANGCI_LINT := go run github.com/golangci/golangci-lint/cmd/golangci-lint
 # ==================================================================================================
 
 .PHONY: all
-all: fix lint test
+all: fix lint test build
 
 # ==================================================================================================
 # fix, lint and test
@@ -27,3 +27,7 @@ lint:
 
 .PHONY: test
 test: 
+
+.PHONY: build
+build:
+	go build

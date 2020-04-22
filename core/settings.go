@@ -1,6 +1,8 @@
 package core
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // Settings contains all configurable properties of a ping session.
 type Settings struct {
@@ -32,8 +34,8 @@ type Settings struct {
 	// IsPrivileged defines if privileged (raw ICMP sockets) or unprivileged (datagram-oriented) mode is used.
 	IsPrivileged bool
 
-	// Verbose defines if verbose output is logged.
-	Verbose bool
+	// LoggingLevel defines the level of the session logger.
+	LoggingLevel int
 
 	// PrettyPrint defines if the output is formatted different from the normal ping.
 	PrettyPrint bool
@@ -54,7 +56,7 @@ func DefaultSettings() *Settings {
 		Timeout:      10,
 		Interval:     1,
 		IsPrivileged: false,
-		Verbose:      false,
+		LoggingLevel: 0,
 		PrettyPrint:  false,
 	}
 }

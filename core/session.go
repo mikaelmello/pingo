@@ -7,6 +7,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // Session is an aggregation of ping executions
@@ -43,31 +45,43 @@ type Session struct {
 
 	// isFinished is the channel that will signal the end of the session run.
 	isFinished chan bool
+
+	// logger is an instance of logrus used to log activities related to this session
+	logger *log.Logger
 }
 
 // NewSession creates a new Session
 func NewSession(address string, settings *Settings) (*Session, error) {
+	logger := NewLogger(settings.LoggingLevel)
+
+	logger.Debug("Validating settings")
 	err := settings.validate()
 	if err != nil {
 		return nil, fmt.Errorf("invalid settings: %w", err)
 	}
+	logger.Debug("Settings configured correctly")
 
+	logger.Infof("Resolving address %s", address)
 	ipaddr, err := net.ResolveIPAddr("ip", address)
 	if err != nil {
 		return nil, fmt.Errorf("error while resolving address %s: %w", address, err)
 	}
+	logger.Infof("Address %s resolved to IP Address %s", address, ipaddr.String())
 
 	var resAddr net.Addr = ipaddr
 	if !settings.IsPrivileged {
 		// The provided dst must be net.UDPAddr when conn is a non-privileged
 		// datagram-oriented ICMP endpoint.
+		logger.Infof("Running as non-privileged, setting address to UDP")
 		resAddr = &net.UDPAddr{IP: ipaddr.IP, Zone: ipaddr.Zone}
 	}
 
 	ipv4 := isIPv4(ipaddr.IP)
+	logger.Infof("Resolved IP address is IPv4: %t", ipv4)
 
 	r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
-	return &Session{
+
+	session := &Session{
 		lastSequence: 0,
 		totalSent:    0,
 		totalRecv:    0,
@@ -78,12 +92,23 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 		isIPv4:       ipv4,
 		addr:         resAddr,
 		settings:     settings,
-	}, nil
+		logger:       logger,
+	}
+
+	logger.Infof("Created session with id %d, bigID %d, ipv4 %t, addr %s",
+		session.id, session.bigID, session.isIPv4, session.addr.String())
+
+	return session, nil
 }
 
 // Start starts the sequence of pings
 func (s *Session) Start() error {
 	defer close(s.isFinished)
+
+	if !s.settings.IsPrivileged {
+		s.logger.Warnf("You are running as non-privileged, meaning that it is not possible to receive TimeExceeded ICMP"+
+			" requests. Requests that exceed the configured TTL of %d will be treated as timed out", s.settings.TTL)
+	}
 
 	conn, err := s.getConnection()
 	if err != nil {
@@ -92,22 +117,27 @@ func (s *Session) Start() error {
 	defer conn.Close()
 
 	// timer responsible for shutting down the execution, if enabled
+	s.logger.Debugf("Initializing deadline timer to duration %s", s.getDeadlineDuration())
 	deadline := time.NewTimer(s.getDeadlineDuration())
 	defer deadline.Stop()
 
 	// timer responsible for timing out requests and requiring new ones
+	s.logger.Debugf("Initializing timeout timer to duration %s", s.getTimeoutDuration())
 	timeout := time.NewTimer(s.getTimeoutDuration())
 	defer timeout.Stop()
 
 	// timer responsible for handling the interval between two requests
+	s.logger.Debugf("Initializing interval timer to duration %s", time.Duration(0))
 	interval := time.NewTimer(0)
 	defer interval.Stop()
 
 	// channel that will stream all incoming ICMP packets
+	s.logger.Debug("Creating chhannel of incoming raw packets")
 	rawPackets := make(chan *rawPacket, 5)
 	defer close(rawPackets)
 
 	// start receiving incoming ICMP packets using a controlgroup to properly exit later
+	s.logger.Info("Calling goroutine to poll for incoming raw packets")
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go s.pollICMP(&wg, conn, rawPackets)
@@ -115,76 +145,103 @@ func (s *Session) Start() error {
 	for {
 		select {
 		case <-deadline.C:
+			s.logger.Info("Deadline timer has fired")
+
 			if !s.isDeadlineActive() {
+				s.logger.Info("Ignoring deadline timer because the deadline config has not been activated")
 				continue
 			}
 
 			// deadline is active and triggered, let's end everything
+			s.logger.Info("Finishing session and waiting for the polling to return")
+
 			s.isFinished <- true
 			wg.Wait()
+
+			s.logger.Info("Session ended")
 			return nil
 
 		case <-timeout.C:
-			// timeout, onto the next request
-			println("Oops timeout")
+			s.logger.Info("Timeout timer has fired")
 
 			if s.reachedRequestLimit() {
-				println(time.Now().String(), "Reached max of count")
+				s.logger.Info("Not firing more requests as we have reached the set count")
+				s.logger.Info("Finishing session and waiting for the polling to return")
 
 				s.isFinished <- true
 				wg.Wait()
+
+				s.logger.Info("Session ended")
 				return nil
 			}
+
+			s.logger.Infof("Resetting interval timer to trigger a new request in %s", s.getIntervalDuration())
 
 			interval.Reset(s.getIntervalDuration())
 			continue
 
 		case <-interval.C:
+			s.logger.Info("Interval timer has fired")
+
+			s.logger.Infof("Resetting timeout timer to account for a timeout of the reply for the next request",
+				s.getTimeoutDuration())
+
 			timeout.Reset(s.getTimeoutDuration())
 
-			println(time.Now().String(), "Sending echo", s.addr.String())
-			err = s.requestEcho(conn)
+			err = s.sendEchoRequest(conn)
 			if err != nil {
-				println(time.Now().String(), "Echo failed %s", err.Error())
+				s.logger.Errorf("Could not send echo request: %w", err)
 
 				// this request already failed, clearing timer and resetting interval
+				s.logger.Infof("Stopping timeout timer and resetting interval timer to trigger a new request in %s",
+					s.getIntervalDuration())
+
 				interval.Reset(s.getIntervalDuration())
 				clearTimer(timeout)
 				continue
 			}
 
 		case raw := <-rawPackets:
-			println(time.Now().String(), "Received ICMP")
+			s.logger.Tracef("Raw packet received: %x", raw.content[:raw.length])
+
 			// checks whether this ICMP is the reply of the last request and process it
-			match, err := s.checkRawPacket(raw)
+			match, err := s.parseRawPacket(raw)
 
 			if err != nil || !match {
 				if err != nil {
-					println(time.Now().String(), "Not matchh or err %s", err.Error())
+					s.logger.Errorf("Could not parse raw packet: %w", err)
 				} else {
-					println(time.Now().String(), "Not match")
+					s.logger.Info("Received raw packet was not a match")
 				}
 				continue
 			}
 
 			// checks if we have to stop somewhere and if we are already there
 			if s.reachedRequestLimit() {
-				println(time.Now().String(), "Reached max of count")
+				s.logger.Info("Not firing more requests as we have reached the set count")
+				s.logger.Info("Finishing session and waiting for the polling to return")
 
 				s.isFinished <- true
 				wg.Wait()
+
+				s.logger.Info("Session ended")
 				return nil
 			}
 
 			// it is a match, clearing timeout and resetting interval for next request
+			s.logger.Infof("Stopping timeout timer and resetting interval timer to trigger a new request in %s",
+				s.getIntervalDuration())
+
 			clearTimer(timeout)
 			interval.Reset(s.getIntervalDuration())
 
 		case <-s.isFinished:
-			// we have been stopped by the polling
-			println("stopped")
+			s.logger.Info("Stop request received by either the polling or stop method, ending session")
+
 			s.isFinished <- true // in case isFinished has not been signaled (stop call for example)
 			wg.Wait()
+
+			s.logger.Info("Session ended")
 			return nil
 		}
 	}
@@ -192,6 +249,7 @@ func (s *Session) Start() error {
 
 // Stop finishes the execution of the session
 func (s *Session) Stop() {
+	s.logger.Info("Requesting to end session")
 	s.isFinished <- true
 }
 

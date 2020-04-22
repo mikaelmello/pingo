@@ -23,12 +23,16 @@ const (
 	icmpv6UnprivilegedNetwork = "udp6"
 )
 
-// requestEcho sends an ECHO_REQUEST to the address defined in the Session receiving as a parameter
+// sendEchoRequest sends an echo request to the address defined in the Session receiving as a parameter
 // the open connection with the target host.
-func (s *Session) requestEcho(conn *icmp.PacketConn) error {
+func (s *Session) sendEchoRequest(conn *icmp.PacketConn) error {
 
-	bigID := uint64ToBytes(s.bigID)     // ensure same source
-	tstp := unixNanoToBytes(time.Now()) // calculate rtt
+	s.logger.Infof("Making a new echo request to address %s", s.addr.String())
+
+	now := time.Now()
+
+	bigID := uint64ToBytes(s.bigID) // ensure same source
+	tstp := unixNanoToBytes(now)    // calculate rtt
 	data := append(bigID, tstp...)
 
 	body := &icmp.Echo{
@@ -37,26 +41,35 @@ func (s *Session) requestEcho(conn *icmp.PacketConn) error {
 		Data: data,
 	}
 
+	s.logger.Debugf("Body id %d, seq %d, bigID %d, tstp %s", s.bigID, now, s.id, s.lastSequence+1)
+	s.logger.Tracef("Body data %x", data)
+
 	msg := &icmp.Message{
 		Type: s.getICMPType(),
 		Code: echoCode,
 		Body: body,
 	}
+	s.logger.Debugf("ICMP message with type %s and code %d", s.getICMPType(), echoCode)
 
 	bytesmsg, err := msg.Marshal(nil)
+
+	s.logger.Tracef("ICMP message marshalled is %x", bytesmsg)
 
 	if err != nil {
 		return fmt.Errorf("could not marshal ICMP message with Echo body: %w", err)
 	}
 
+	s.logger.Infof("Writing ICMP message to address %s", s.addr.String())
 	_, err = conn.WriteTo(bytesmsg, s.addr)
 
 	// request failing or not, we must update these values
 	s.totalSent++
 	s.lastSequence++
+	s.logger.Infof("Incrementing number of packages sent and of last sequence to %d and %d respectively",
+		s.totalSent, s.lastSequence)
 
 	if err != nil {
-		return fmt.Errorf("error while sending ECHO_REQUEST: %w", err)
+		return fmt.Errorf("error while sending echo request: %w", err)
 	}
 
 	return nil
@@ -69,24 +82,30 @@ func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<
 	for {
 		select {
 		case <-s.isFinished:
-			// session has finished, end
+			s.logger.Info("Main session loop has finished, ending polling for new packets")
 			return
 		default:
-			buffer := make([]byte, 1024)
-			if err := conn.SetReadDeadline(time.Now().Add(time.Second * 1)); err != nil {
-				fmt.Printf("Fatal error here")
+			buffer := make([]byte, 128)
 
+			maxwait := time.Millisecond * 200
+
+			s.logger.Tracef("Setting read deadline to %s", maxwait)
+			if err := conn.SetReadDeadline(time.Now().Add(maxwait)); err != nil {
+				s.logger.Fatalf("Error while setting read deadline, finishing polling and session: %w", err)
 				// signal main loop and return
 				s.isFinished <- true
 				return
 			}
 
+			s.logger.Trace("Reading from connection")
 			length, ttl, err := s.readFrom(conn, buffer)
 			if err != nil {
 				if neterr, ok := err.(*net.OpError); ok {
 					if neterr.Timeout() {
+						s.logger.Trace("Read deadline has expired, trying again")
 						continue
 					} else {
+						s.logger.Fatalf("Error while reading from connection, finishing polling and session: %w", err)
 						// signal main loop and return
 						s.isFinished <- true
 						return
@@ -95,6 +114,7 @@ func (s *Session) pollICMP(wg *sync.WaitGroup, conn *icmp.PacketConn, recv chan<
 			}
 
 			// sends the packet to the session so it can be checked and processed
+			s.logger.Infof("Sending raw packet %x with ttl %d to main session loop", buffer[:length], ttl)
 			recv <- &rawPacket{content: buffer, length: length, ttl: ttl}
 		}
 	}
@@ -124,9 +144,11 @@ func (s *Session) readFrom(conn *icmp.PacketConn, bytes []byte) (int, int, error
 
 // checkRawPacket returns whether the packet matches all requirements to be considered a successful reply.
 // It also modifies the Session state by updating it with info from the packet if it is considered a successful reply.
-func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
+func (s *Session) parseRawPacket(raw *rawPacket) (bool, error) {
 	receivedTstp := time.Now()
 
+	s.logger.Infof("Parsing raw packet %x as an ICMP message using protocol %d",
+		raw.content[:raw.length], s.getProtocol())
 	m, err := icmp.ParseMessage(s.getProtocol(), raw.content)
 	if err != nil {
 		return false, fmt.Errorf("error parsing ICMP message: %s", err.Error())
@@ -138,13 +160,14 @@ func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
 
 	if !isEchoReply && !isTimeExceeded {
 		// Not an echo reply or time exceeded, ignore it
+		s.logger.Debugf("Received message that is not an echo reply or time exceeded, code %d and type %d", m.Code, m.Type)
 		return false, nil
 	}
 
 	// cast body as icmp.Echo
 	switch body := m.Body.(type) {
 	case *icmp.TimeExceeded:
-		println("Time exceeded hmm")
+		s.logger.Info("Received a TimeExceeded message")
 
 		origdgram := body.Data[20:28]
 
@@ -155,22 +178,32 @@ func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
 
 		// Check if TLE came from same ID
 		if echoBody.ID != s.id {
+			s.logger.Debugf("TimeExceeded message does not match last sent echo request, parsed id differs. Expected: %d."+
+				" Actual: %d", s.id, echoBody.ID)
 			return false, nil
 		}
+		s.logger.Debugf("TimeExceeded message echoBody ID matches last sent echo request. Expected: %d.", s.id)
 
 		// checks if the body seq matches the seq of the last echo request
 		if echoBody.Seq != s.lastSequence {
+			s.logger.Debugf("TimeExceeded message does not match last sent echo request, parsed seq differs. Expected: %d."+
+				" Actual: %d", s.lastSequence, echoBody.Seq)
 			return false, nil
 		}
+		s.logger.Debugf("TimeExceeded message echoBody Seq matches last sent echo request. Expected: %d.", s.lastSequence)
 
+		s.logger.Info("TimeExceeded matches last sent echo request.")
 		return true, nil
 	case *icmp.Echo:
+		s.logger.Debug("Received an echo reply message")
 
 		if s.settings.IsPrivileged {
 			// Check if reply from same ID
 			if body.ID != s.id {
+				s.logger.Debugf("Echo reply body ID does not match session ID. Expected: %d. Actual: %d.", s.id, body.ID)
 				return false, nil
 			}
+			s.logger.Debugf("Echo reply body ID matches last sent echo request. Expected: %d.", s.id)
 		}
 
 		if len(body.Data) < dataLength {
@@ -182,15 +215,24 @@ func (s *Session) checkRawPacket(raw *rawPacket) (bool, error) {
 		tstp := bytesToUnixNano(body.Data[8:])
 		// checks if the body seq matches the seq of the last echo request
 		if body.Seq != s.lastSequence {
+			s.logger.Debugf("Echo reply body Seq does not match session's last sequence. Expected: %d. Actual: %d.",
+				s.lastSequence, body.Seq)
 			return false, nil
 		}
+		s.logger.Debugf("Echo reply body Seq matches last sent echo request. Expected: %d.", s.lastSequence)
 
 		// checks if our unique identifier also matches
 		if bigID != s.bigID {
+			s.logger.Debugf("Echo reply body data big ID does not match session's big ID. Expected: %d. Actual: %d.",
+				s.bigID, bigID)
 			return false, nil
 		}
+		s.logger.Debugf("Echo reply body data bigID matches session's big ID. Expected: %d.", s.bigID)
 
-		rtt := receivedTstp.Sub(tstp).Nanoseconds()
+		rttduration := receivedTstp.Sub(tstp)
+		rtt := rttduration.Nanoseconds()
+		s.logger.Infof("Echo reply matches last sent echo request. RTT is %s and TTL is %d", rttduration, raw.ttl)
+
 		if rtt > s.maxRtt {
 			s.maxRtt = rtt
 		}
@@ -210,7 +252,7 @@ func (s *Session) getICMPType() icmp.Type {
 		return ipv4.ICMPTypeEcho
 	}
 
-	return ipv6.ICMPTypeEchoRequest
+	return ipv6.ICMPTypeEchoReply
 }
 
 // getNetwork returns the appropriate ICMP network value of the session.
@@ -239,13 +281,15 @@ func (s *Session) getProtocol() int {
 
 // getConnection returns a connection made to the session's address.
 func (s *Session) getConnection() (*icmp.PacketConn, error) {
+	s.logger.Infof("Starting to listen to packets in network %s", s.getNetwork())
 	conn, err := icmp.ListenPacket(s.getNetwork(), "")
-
 	if err != nil {
 		return nil, fmt.Errorf("could not listen to ICMP packets, error: %s", err.Error())
 	}
+	s.logger.Debug("Connection successfully created")
 
 	if s.isIPv4 {
+		s.logger.Info("Setting TTL and control message to receive TTL")
 		if err := conn.IPv4PacketConn().SetTTL(s.settings.TTL); err != nil {
 			return nil, fmt.Errorf("could not set TTL in connection, error: %s", err.Error())
 		}
@@ -253,6 +297,7 @@ func (s *Session) getConnection() (*icmp.PacketConn, error) {
 			return nil, fmt.Errorf("could not set control message in connection, error: %s", err.Error())
 		}
 	} else {
+		s.logger.Info("Setting TTL and control message to receive TTL")
 		if err := conn.IPv6PacketConn().SetHopLimit(s.settings.TTL); err != nil {
 			return nil, fmt.Errorf("could not set control message in connection, error: %s", err.Error())
 		}
@@ -260,6 +305,8 @@ func (s *Session) getConnection() (*icmp.PacketConn, error) {
 			return nil, fmt.Errorf("could not set control message in connection, error: %s", err.Error())
 		}
 	}
+
+	s.logger.Debug("Connection to listen to packets successfully created and configured")
 
 	return conn, nil
 }
