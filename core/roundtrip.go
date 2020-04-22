@@ -17,11 +17,11 @@ const (
 	TimedOut
 )
 
-type roundTrip struct {
-	ttl  int             // time-to-live, receiving only
-	seq  int             // seq of reply, successful or not
-	len  int             // len of reply
-	src  net.IP          // src of reply
-	time time.Duration   // rtt, successful-only
-	res  RoundTripResult // result
+type RoundTrip struct {
+	TTL  int             // time-to-live, receiving only
+	Seq  int             // seq of reply, successful or not
+	Len  int             // len of reply
+	Src  net.IP          // src of reply
+	Time time.Duration   // rtt, successful-only
+	Res  RoundTripResult // result
 }

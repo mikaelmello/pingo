@@ -9,6 +9,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/net/icmp"
 )
 
 // Session is an aggregation of ping executions
@@ -51,6 +52,18 @@ type Session struct {
 
 	// finished is the channel that will signal the end of the session run.
 	finished chan bool
+
+	// rtHandlers are the callback functions called when a round trip happens.
+	// The function parameters are the session.
+	rtHandlers []func(*RoundTrip)
+
+	// stHandlers are the callback functions called when the session starts.
+	// The function parameters are the session and a sample first echo request.
+	stHandlers []func(*Session, *icmp.Message)
+
+	// endHandlers are the callback functions called when the session ends.
+	// The function parameters are the session.
+	endHandlers []func(*Session)
 }
 
 // NewSession creates a new Session
@@ -116,6 +129,11 @@ func (s *Session) Start() error {
 	if !s.settings.IsPrivileged {
 		s.logger.Warnf("You are running as non-privileged, meaning that it is not possible to receive TimeExceeded ICMP"+
 			" requests. Requests that exceed the configured TTL of %d will be treated as timed out", s.settings.TTL)
+	}
+
+	s.logger.Info("Calling start callbacks")
+	for _, f := range s.stHandlers {
+		f(s, s.buildEchoRequest())
 	}
 
 	conn, err := s.getConnection()
@@ -241,8 +259,13 @@ func (s *Session) Start() error {
 
 			s.finishReqs <- true // forwarding to polling if it did not come from there
 			wg.Wait()            // waiting for polling to return
-			s.finished <- true   // sending to stop, if it came from there
 
+			s.logger.Info("Calling ending callbacks")
+			for _, f := range s.endHandlers {
+				f(s)
+			}
+
+			s.finished <- true // sending to stop, if it came from there
 			s.logger.Info("Session ended")
 			return nil
 		}
@@ -254,6 +277,21 @@ func (s *Session) Stop() {
 	s.logger.Info("Requesting to end session")
 	s.finishReqs <- true
 	<-s.finished
+}
+
+// AddRtHandler adds a handler function that will be called after an echo request is replied or expires
+func (s *Session) AddRtHandler(handler func(*RoundTrip)) {
+	s.rtHandlers = append(s.rtHandlers, handler)
+}
+
+// AddStHandler adds a handler function that will be called when the session starts
+func (s *Session) AddStHandler(handler func(*Session, *icmp.Message)) {
+	s.stHandlers = append(s.stHandlers, handler)
+}
+
+// AddEndHandler adds a handler function that will be called when the session ends
+func (s *Session) AddEndHandler(handler func(*Session)) {
+	s.endHandlers = append(s.endHandlers, handler)
 }
 
 // Returns the deadline setting parsed as a duration in seconds
@@ -294,16 +332,21 @@ func (s *Session) reachedRequestLimit() bool {
 	return s.isMaxCountActive() && s.totalSent >= s.settings.MaxCount
 }
 
-func (s *Session) buildTimedOutRT() *roundTrip {
-	return &roundTrip{
-		ttl:  0,
-		src:  nil,
-		time: s.getTimeoutDuration(),
-		len:  0,
-		seq:  s.lastSequence,
-		res:  TimedOut,
+// buildTimedOutRT builds a round trip object containing data relevant to a timed out request
+func (s *Session) buildTimedOutRT() *RoundTrip {
+	return &RoundTrip{
+		TTL:  0,
+		Src:  nil,
+		Time: s.getTimeoutDuration(),
+		Len:  0,
+		Seq:  s.lastSequence,
+		Res:  TimedOut,
 	}
 }
 
-func (s *Session) processRoundTrip(rt *roundTrip) {
+// processRoundTrip calls all handlers for a round trip
+func (s *Session) processRoundTrip(rt *RoundTrip) {
+	for _, f := range s.rtHandlers {
+		f(rt)
+	}
 }

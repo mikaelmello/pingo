@@ -49,6 +49,7 @@ func (s *Session) sendEchoRequest(conn *icmp.PacketConn) error {
 	return nil
 }
 
+// Builds the next ICMP package, does not modify session's state.
 func (s *Session) buildEchoRequest() *icmp.Message {
 	s.logger.Tracef("Building new echho request")
 
@@ -156,7 +157,7 @@ func (s *Session) readFrom(conn *icmp.PacketConn, bytes []byte) (int, *controlMe
 
 // checkRawPacket returns whether the packet matches all requirements to be considered a successful reply.
 // It also modifies the Session state by updating it with info from the packet if it is considered a successful reply.
-func (s *Session) preProcessRawPacket(raw *rawPacket) (*roundTrip, error) {
+func (s *Session) preProcessRawPacket(raw *rawPacket) (*RoundTrip, error) {
 	receivedTstp := time.Now()
 
 	s.logger.Infof("Parsing raw packet %x as an ICMP message using protocol %d",
@@ -206,13 +207,13 @@ func (s *Session) preProcessRawPacket(raw *rawPacket) (*roundTrip, error) {
 
 		s.logger.Info("TimeExceeded matches last sent echo request.")
 
-		rt := &roundTrip{
-			ttl:  raw.cm.TTL,
-			src:  raw.cm.Src,
-			time: time.Duration(0),
-			len:  raw.length,
-			seq:  echoBody.Seq,
-			res:  TTLExpired,
+		rt := &RoundTrip{
+			TTL:  raw.cm.TTL,
+			Src:  raw.cm.Src,
+			Time: time.Duration(0),
+			Len:  raw.length,
+			Seq:  echoBody.Seq,
+			Res:  TTLExpired,
 		}
 
 		return rt, nil
@@ -257,8 +258,6 @@ func (s *Session) preProcessRawPacket(raw *rawPacket) (*roundTrip, error) {
 		s.logger.Infof("Echo reply matches last sent echo request. RTT is %s, TTL is %d and source address is %s",
 			rttduration, raw.cm.TTL, raw.cm.Src.String())
 
-		println(raw.cm.TTL, raw.cm.Src.String())
-
 		if rtt > s.maxRtt {
 			s.maxRtt = rtt
 		}
@@ -266,13 +265,13 @@ func (s *Session) preProcessRawPacket(raw *rawPacket) (*roundTrip, error) {
 
 		s.totalRecv++
 
-		rt := &roundTrip{
-			ttl:  raw.cm.TTL,
-			src:  raw.cm.Src,
-			time: rttduration,
-			len:  raw.length,
-			seq:  body.Seq,
-			res:  Replied,
+		rt := &RoundTrip{
+			TTL:  raw.cm.TTL,
+			Src:  raw.cm.Src,
+			Time: rttduration,
+			Len:  raw.length,
+			Seq:  body.Seq,
+			Res:  Replied,
 		}
 
 		return rt, nil
