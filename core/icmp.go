@@ -38,7 +38,7 @@ func (s *Session) sendEchoRequest(conn *icmp.PacketConn) error {
 
 	// request failing or not, we must update these values
 	s.Stats.TotalSent++
-	s.lastSequence++
+	s.lastSequence = (s.lastSequence + 1) & 0xffff
 	s.logger.Infof("Incrementing number of packages sent and of last sequence to %d and %d respectively",
 		s.Stats.TotalSent, s.lastSequence)
 
@@ -89,7 +89,7 @@ func (s *Session) pollConnection(wg *sync.WaitGroup, conn *icmp.PacketConn, recv
 			s.logger.Info("Received request to finish, ending and forwarding")
 			return
 		default:
-			buffer := make([]byte, 128)
+			buffer := make([]byte, 256)
 
 			maxwait := time.Millisecond * 200
 
@@ -177,8 +177,12 @@ func (s *Session) preProcessRawPacket(raw *rawPacket) (*RoundTrip, error) {
 	switch body := m.Body.(type) {
 	case *icmp.TimeExceeded:
 		s.logger.Info("Received a TimeExceeded message")
-
-		origdgram := body.Data[20:28]
+		var origdgram []byte
+		if s.isIPv4 {
+			origdgram = body.Data[20:28]
+		} else {
+			origdgram = body.Data[40:48]
+		}
 
 		echoBody := &icmp.Echo{
 			ID:  int(bytesToUint16(origdgram[4:6])),
