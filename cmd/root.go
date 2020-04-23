@@ -70,7 +70,7 @@ func init() {
 		"Specify a timeout, in seconds, before ping exits regardless of how many packets have been sent or received. In this case ping does not stop after count packet are sent, it waits either for deadline expire or until count probes are answered or for some error notification from network.")
 	rootCmd.Flags().BoolVarP(&settings.IsPrivileged, "privileged", "p", settings.IsPrivileged,
 		"Whether to use privileged mode. If yes, privileged raw ICMP endpoints are used, non-privileged datagram-oriented otherwise. On Linux, to run unprivileged you must enable the setting 'sudo sysctl -w net.ipv4.ping_group_range=\"0   2147483647\"'. In order to run as a privileged user, you can either run as sudo or execute 'setcap cap_net_raw=+ep <bin path>' to the path of the binary. On Windows, you must run as privileged.")
-	rootCmd.Flags().IntVar(&settings.LoggingLevel, "log-level", settings.LoggingLevel, "Logging level, goes from top priority 0 (Panic) to lowest priority 6 (Trace). Values out of this range log everything.")
+	rootCmd.Flags().Uint32Var(&settings.LoggingLevel, "log-level", settings.LoggingLevel, "Logging level, goes from top priority 0 (Panic) to lowest priority 6 (Trace). Values out of this range log everything.")
 }
 
 // Execute executes the root command of the application.

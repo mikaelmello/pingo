@@ -5,7 +5,7 @@ import (
 )
 
 // NewLogger returns a new pre-configured logger
-func NewLogger(level int) *log.Logger {
+func NewLogger(level uint32) *log.Logger {
 	logger := log.New()
 
 	logger.SetFormatter(&log.TextFormatter{})

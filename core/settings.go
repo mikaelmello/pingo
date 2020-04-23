@@ -35,7 +35,7 @@ type Settings struct {
 	IsPrivileged bool
 
 	// LoggingLevel defines the level of the session logger.
-	LoggingLevel int
+	LoggingLevel uint32
 }
 
 // DefaultSettings returns the default settings for a ping session, change as you wish.
