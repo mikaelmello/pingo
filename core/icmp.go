@@ -38,10 +38,10 @@ func (s *Session) sendEchoRequest(conn *icmp.PacketConn) (*icmp.Message, error) 
 	_, err = conn.WriteTo(bytesmsg, s.addr)
 
 	// request failing or not, we must update these values
-	s.Stats.TotalSent++
+	s.Stats.EchoRequested()
 	s.lastSequence = (s.lastSequence + 1) & 0xffff
 	s.logger.Infof("Incrementing number of packages sent and of last sequence to %d and %d respectively",
-		s.Stats.TotalSent, s.lastSequence)
+		s.Stats.GetTotalSent(), s.lastSequence)
 
 	if err != nil {
 		return msg, fmt.Errorf("error while sending echo request: %w", err)

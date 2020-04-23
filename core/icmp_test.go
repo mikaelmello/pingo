@@ -143,23 +143,8 @@ func TestSessionPreProcessRawPacket4(t *testing.T) {
 }
 
 // TestSessionPreProcessRawPacket5 verifies if an echo reply
-// packet with wrong seq is ignored
-func TestSessionPreProcessRawPacket5(t *testing.T) {
-	s, err := NewSession("localhost", DefaultSettings())
-	assert.NoError(t, err)
-	assert.NotNil(t, s)
-
-	pkt, err := buildEchoReply(s.id, s.lastSequence+1, s.bigID, s.isIPv4)
-	assert.NoError(t, err)
-
-	rt, err := s.preProcessRawPacket(pkt)
-	assert.NoError(t, err)
-	assert.Nil(t, rt)
-}
-
-// TestSessionPreProcessRawPacket6 verifies if an echo reply
 // packet with wrong bigID is ignored
-func TestSessionPreProcessRawPacket6(t *testing.T) {
+func TestSessionPreProcessRawPacket5(t *testing.T) {
 	s, err := NewSession("localhost", DefaultSettings())
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
@@ -172,9 +157,9 @@ func TestSessionPreProcessRawPacket6(t *testing.T) {
 	assert.Nil(t, rt)
 }
 
-// TestSessionPreProcessRawPacket7 verifies if an echo reply
+// TestSessionPreProcessRawPacket6 verifies if an echo reply
 // packet with wrong id is ignored
-func TestSessionPreProcessRawPacket7(t *testing.T) {
+func TestSessionPreProcessRawPacket6(t *testing.T) {
 	s, err := NewSession("localhost", DefaultSettings())
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
@@ -188,9 +173,9 @@ func TestSessionPreProcessRawPacket7(t *testing.T) {
 	assert.Nil(t, rt)
 }
 
-// TestSessionPreProcessRawPacket8 verifies if an ICMP Time
+// TestSessionPreProcessRawPacket7 verifies if an ICMP Time
 // Exceeded (TTL) packet with wrong id is ignored
-func TestSessionPreProcessRawPacket8(t *testing.T) {
+func TestSessionPreProcessRawPacket7(t *testing.T) {
 	s, err := NewSession("localhost", DefaultSettings())
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
@@ -200,25 +185,6 @@ func TestSessionPreProcessRawPacket8(t *testing.T) {
 	id := uint16(s.id)
 	seq := uint16(s.lastSequence)
 	pkt, err := buildTimeExceeded(id+1, seq, s.isIPv4)
-	assert.NoError(t, err)
-
-	rt, err := s.preProcessRawPacket(pkt)
-	assert.NoError(t, err)
-	assert.Nil(t, rt)
-}
-
-// TestSessionPreProcessRawPacket9 verifies if an ICMP Time
-// Exceeded (TTL) packet with wrong seq is ignored
-func TestSessionPreProcessRawPacket9(t *testing.T) {
-	s, err := NewSession("localhost", DefaultSettings())
-	assert.NoError(t, err)
-	assert.NotNil(t, s)
-	// no need to set privileged mode since if this packet
-	// is received, privileged mode is assumed
-
-	id := uint16(s.id)
-	seq := uint16(s.lastSequence)
-	pkt, err := buildTimeExceeded(id, seq+1, s.isIPv4)
 	assert.NoError(t, err)
 
 	rt, err := s.preProcessRawPacket(pkt)

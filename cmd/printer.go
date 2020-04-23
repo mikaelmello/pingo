@@ -34,14 +34,24 @@ func printOnEnd(s *core.Session) {
 	println()
 	// cname, err := net.LookupCNAME(address)
 
-	totalTime := s.Stats.EndTime.Sub(s.Stats.StTime).Truncate(time.Millisecond)
-	rttMin := float64(s.Stats.RTTsMin) / float64(time.Millisecond)
-	rttMax := float64(s.Stats.RTTsMax) / float64(time.Millisecond)
-	rttAvg := float64(s.Stats.RTTsAvg) / float64(time.Millisecond)
-	rttMDev := float64(s.Stats.RTTsMDev) / float64(time.Millisecond)
+	stTime, ok := s.Stats.GetStartTime()
+	if !ok {
+		println("Stats were not initialized")
+	}
+
+	endTime, ok := s.Stats.GetEndTime()
+	if !ok {
+		println("Stats were not initialized")
+	}
+
+	totalTime := endTime.Sub(stTime).Truncate(time.Millisecond)
+	rttMin := float64(s.Stats.GetRTTMin()) / float64(time.Millisecond)
+	rttMax := float64(s.Stats.GetRTTMax()) / float64(time.Millisecond)
+	rttAvg := float64(s.Stats.GetRTTAvg()) / float64(time.Millisecond)
+	rttMDev := float64(s.Stats.GetRTTMDev()) / float64(time.Millisecond)
 
 	fmt.Printf("--- %s ping statistics ---\n", s.CNAME())
 	fmt.Printf("%d packets transmitted, %d received, %.0f%% packet loss, time %s\n",
-		s.Stats.TotalSent, s.Stats.TotalRecv, s.Stats.PktLoss*100, totalTime)
+		s.Stats.GetTotalSent(), s.Stats.GetTotalRecv(), s.Stats.GetPktLoss()*100, totalTime)
 	fmt.Printf("rtt min/avg/max/mdev = %.3f/%.3f/%.3f/%.3f ms\n", rttMin, rttAvg, rttMax, rttMDev)
 }

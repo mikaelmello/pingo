@@ -179,15 +179,8 @@ func TestSessionHandleRawPacket1(t *testing.T) {
 	pkt, err := buildEchoReply(s.id, s.lastSequence, s.bigID, s.isIPv4)
 	assert.NoError(t, err)
 
-	ch := make(chan bool, 1)
-	rth := func(s *Session, rt *RoundTrip) {
-		assert.Equal(t, pkt.cm.TTL, rt.TTL)
-		assert.Equal(t, pkt.cm.Src, rt.Src)
-		assert.Equal(t, Replied, rt.Res)
-		ch <- true
-	}
+	ch := s.rMap.GetOrCreate(uint16(s.lastSequence))
 
-	s.AddOnRecv(rth)
 	s.handleRawPacket(pkt)
 	assert.Empty(t, s.finishReqs)
 	assert.NotEmpty(t, ch)
@@ -204,15 +197,8 @@ func TestSessionHandleRawPacket2(t *testing.T) {
 	pkt, err := buildTimeExceeded(uint16(s.id), uint16(s.lastSequence), s.isIPv4)
 	assert.NoError(t, err)
 
-	ch := make(chan bool, 1)
-	rth := func(s *Session, rt *RoundTrip) {
-		assert.Equal(t, pkt.cm.TTL, rt.TTL)
-		assert.Equal(t, pkt.cm.Src, rt.Src)
-		assert.Equal(t, TTLExpired, rt.Res)
-		ch <- true
-	}
+	ch := s.rMap.GetOrCreate(uint16(s.lastSequence))
 
-	s.AddOnRecv(rth)
 	s.handleRawPacket(pkt)
 	assert.NotEmpty(t, ch)
 	assert.Empty(t, s.finishReqs)
@@ -345,7 +331,10 @@ func TestSessionReachedRequestLimit1(t *testing.T) {
 	s, err := NewSession("localhost", settings)
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
-	s.Stats.TotalSent = 55
+
+	for i := 0; i < 5; i++ {
+		s.Stats.EchoRequested()
+	}
 
 	assert.False(t, s.reachedRequestLimit())
 }
@@ -360,7 +349,10 @@ func TestSessionReachedRequestLimit2(t *testing.T) {
 	s, err := NewSession("localhost", settings)
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
-	s.Stats.TotalSent = 20
+
+	for i := 0; i < 5; i++ {
+		s.Stats.EchoRequested()
+	}
 
 	assert.False(t, s.reachedRequestLimit())
 }
@@ -370,12 +362,15 @@ func TestSessionReachedRequestLimit2(t *testing.T) {
 // reached limit
 func TestSessionReachedRequestLimit3(t *testing.T) {
 	settings := DefaultSettings()
-	settings.MaxCount = 55
+	settings.MaxCount = 5
 	settings.IsMaxCountDefault = false
 	s, err := NewSession("localhost", settings)
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
-	s.Stats.TotalSent = 55
+
+	for i := 0; i < 5; i++ {
+		s.Stats.EchoRequested()
+	}
 
 	assert.True(t, s.reachedRequestLimit())
 }
@@ -410,14 +405,12 @@ func TestSessionProcessRoundTrip1(t *testing.T) {
 	}
 	s.AddOnRecv(rth)
 
-	prevlen := len(s.Stats.RTTs)
-	prevrecv := s.Stats.TotalRecv
+	prevlen := s.Stats.GetTotalRecv()
 
 	rt := buildRoundTrip(Replied)
 	s.processRoundTrip(rt)
 
-	assert.Equal(t, prevlen+1, len(s.Stats.RTTs))
-	assert.Equal(t, prevrecv+1, s.Stats.TotalRecv)
+	assert.Equal(t, prevlen+1, s.Stats.GetTotalRecv())
 }
 
 // TestSessionProcessRoundTrip2 verifies that the function
@@ -434,14 +427,14 @@ func TestSessionProcessRoundTrip2(t *testing.T) {
 	}
 	s.AddOnRecv(rth)
 
-	prevlen := len(s.Stats.RTTs)
-	prevrecv := s.Stats.TotalRecv
+	prevlen := s.Stats.GetTotalRecv()
+	prevtout := s.Stats.GetTotalTimedOut()
 
 	rt := buildRoundTrip(TimedOut)
 	s.processRoundTrip(rt)
 
-	assert.Equal(t, prevlen, len(s.Stats.RTTs))
-	assert.Equal(t, prevrecv, s.Stats.TotalRecv)
+	assert.Equal(t, prevlen, s.Stats.GetTotalRecv())
+	assert.Equal(t, prevtout, s.Stats.GetTotalTimedOut())
 }
 
 // TestSessionProcessRoundTrip3 verifies that the function
@@ -458,12 +451,12 @@ func TestSessionProcessRoundTrip3(t *testing.T) {
 	}
 	s.AddOnRecv(rth)
 
-	prevlen := len(s.Stats.RTTs)
-	prevrecv := s.Stats.TotalRecv
+	prevlen := s.Stats.GetTotalRecv()
+	prevttl := s.Stats.GetTotalTTLExpired()
 
 	rt := buildRoundTrip(TTLExpired)
 	s.processRoundTrip(rt)
 
-	assert.Equal(t, prevlen, len(s.Stats.RTTs))
-	assert.Equal(t, prevrecv, s.Stats.TotalRecv)
+	assert.Equal(t, prevlen, s.Stats.GetTotalRecv())
+	assert.Equal(t, prevttl, s.Stats.GetTotalTTLExpired())
 }

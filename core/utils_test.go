@@ -32,17 +32,17 @@ func TestClearTimerStopsTimer(t *testing.T) {
 }
 
 func TestMax(t *testing.T) {
-	assert.Equal(t, int64(5), max(5, 4))
-	assert.Equal(t, int64(5), max(5, 5))
-	assert.Equal(t, int64(6), max(5, 6))
-	assert.Equal(t, int64(-1), max(-1, -2))
-	assert.Equal(t, int64(0), max(-1, 0))
+	assert.Equal(t, uint64(5), max(5, 4))
+	assert.Equal(t, uint64(5), max(5, 5))
+	assert.Equal(t, uint64(6), max(5, 6))
+	assert.Equal(t, uint64(2232), max(2232, 333))
+	assert.Equal(t, uint64(4125421412), max(4125421412, 0))
 }
 
 func TestMin(t *testing.T) {
-	assert.Equal(t, int64(4), min(5, 4))
-	assert.Equal(t, int64(5), min(5, 5))
-	assert.Equal(t, int64(5), min(5, 6))
-	assert.Equal(t, int64(-2), min(-1, -2))
-	assert.Equal(t, int64(-1), min(-1, 0))
+	assert.Equal(t, uint64(4), min(5, 4))
+	assert.Equal(t, uint64(5), min(5, 5))
+	assert.Equal(t, uint64(5), min(5, 6))
+	assert.Equal(t, uint64(333), min(2232, 333))
+	assert.Equal(t, uint64(0), min(4125421412, 0))
 }

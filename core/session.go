@@ -15,7 +15,7 @@ import (
 // Session is an aggregation of ping executions
 type Session struct {
 	// Stats contain the overall statistics of the session
-	Stats *Statistics
+	Stats Statistics
 
 	settings *Settings
 
@@ -390,8 +390,8 @@ func (s *Session) getTimeoutDuration() time.Duration {
 	// if we already have successful pings, our timeout is now 2 times
 	// the longest registered rtt, as the original ping does
 	// otherwise, we use the standard timeout
-	if len(s.Stats.RTTs) > 0 {
-		return time.Duration(2 * s.Stats.RTTsMax)
+	if s.Stats.GetTotalRecv() > 0 {
+		return time.Duration(2 * s.Stats.GetRTTMax())
 	}
 	return time.Second * time.Duration(s.settings.Timeout)
 }
@@ -409,7 +409,7 @@ func (s *Session) isMaxCountActive() bool {
 // reachedRequestLimit whether we ahave reached the request limit of this session.
 func (s *Session) reachedRequestLimit() bool {
 	// checks if we have to stop somewhere and if we are already there
-	return s.isMaxCountActive() && s.Stats.TotalSent >= s.settings.MaxCount
+	return s.isMaxCountActive() && int64(s.Stats.GetTotalSent()) >= int64(s.settings.MaxCount)
 }
 
 // processRoundTrip calls all handlers for a round trip.
@@ -417,9 +417,7 @@ func (s *Session) processRoundTrip(rt *RoundTrip) {
 
 	if rt.Res == Replied {
 		rtt := rt.Time.Nanoseconds()
-		s.Stats.RTTsMax = max(s.Stats.RTTsMax, rtt)
-		s.Stats.RTTs = append(s.Stats.RTTs, rtt) // stats purposes
-		s.Stats.TotalRecv++
+		s.Stats.EchoReplied(uint64(rtt))
 	}
 
 	s.logger.Info("Calling all handlers for latest round trip")

@@ -66,7 +66,7 @@ func clearTimer(t *time.Timer) {
 }
 
 // max returns the max number between a and b
-func max(a int64, b int64) int64 {
+func max(a uint64, b uint64) uint64 {
 	if a > b {
 		return a
 	}
@@ -74,7 +74,7 @@ func max(a int64, b int64) int64 {
 }
 
 // min returns the min number between a and b
-func min(a int64, b int64) int64 {
+func min(a uint64, b uint64) uint64 {
 	if a < b {
 		return a
 	}
