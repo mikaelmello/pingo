@@ -117,8 +117,8 @@ rtt min/avg/max/mdev = 153.783/155.169/156.165/0.939 ms
 $ sudo ./pingo cloudflare.com -c 2 -t 10 --privileged
 
 PING cloudflare.com. (104.17.176.85) 24 bytes of data
-From [random ip]: icmp_seq=1 time to live exceeded
-From [random ip]: icmp_seq=2 time to live exceeded
+From [redacted]: icmp_seq=1 time to live exceeded
+From [redacted]: icmp_seq=2 time to live exceeded
 
 --- cloudflare.com. ping statistics ---
 2 packets transmitted, 0 received, 100% packet loss, time 1.53s
