@@ -20,7 +20,7 @@ $ $GOPATH/bin/pingo # to execute the program
 To manually build it, clone the repository and then build it
 
 ``` sh
-$ git clone github.com/mikaelmello/pingo
+$ git clone https://github.com/mikaelmello/pingo.git
 $ cd pingo
 $ go build
 $ ./pingo # to execute the program
