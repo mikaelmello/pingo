@@ -2,6 +2,7 @@ package core
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -98,6 +99,12 @@ func TestSettingsNegativeInterval(t *testing.T) {
 func TestSettingsZeroInterval(t *testing.T) {
 	settings := DefaultSettings()
 	settings.Interval = 0
+	assert.Error(t, settings.validate())
+}
+
+func TestSettingsLargeInterval(t *testing.T) {
+	settings := DefaultSettings()
+	settings.Interval = float64(time.Hour*24*365*10) / float64(time.Second)
 	assert.Error(t, settings.validate())
 }
 

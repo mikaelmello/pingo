@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"time"
 )
 
 // Settings contains all configurable properties of a ping session.
@@ -76,6 +77,10 @@ func (s *Settings) validate() error {
 
 	if s.Interval < 0 {
 		return fmt.Errorf("interval must be non-negative")
+	}
+
+	if (s.Interval * float64(time.Second)) >= float64(time.Hour*24*365*10) {
+		return fmt.Errorf("interval must be smaller than 10 years, very arbitrary I know")
 	}
 
 	if s.Interval <= 0.2 && !s.IsPrivileged {
