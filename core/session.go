@@ -59,8 +59,14 @@ type Session struct {
 	// isFinished contains whether the session has been finished
 	isFinished bool
 
+	// statusMutex is responsible synchronizing reads and writes of isStarted and isFinished status
+	statusMutex sync.Mutex
+
 	// rMap contains the channels for each seq
 	rMap ReplyMap
+
+	// reqW is responsible for synchronizing the hanging requests
+	reqW sync.WaitGroup
 
 	// onStart is a list of callback functions called when the session starts.
 	// The function parameters are the session and a sample first echo request.
@@ -120,15 +126,15 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 
 // Run executes the sequence of pings
 func (s *Session) Run() error {
-	if s.isFinished {
+	if s.IsFinished() {
 		return fmt.Errorf("this session has already finished")
 	}
-	if s.isStarted {
+	if s.IsStarted() {
 		return fmt.Errorf("this session has already started")
 	}
 
 	defer close(s.finishReqs)
-	s.isStarted = true
+	s.setIsStarted(true)
 
 	if !s.settings.IsPrivileged {
 		s.logger.Warnf("You are running as non-privileged, meaning that it is not possible to receive TimeExceeded ICMP"+
@@ -166,14 +172,14 @@ func (s *Session) Run() error {
 	defer deadline.Stop()
 	defer interval.Stop()
 
-	go s.handleIntervalTimer(conn)
+	go s.handleIntervalTimer(conn, interval)
 
 	for {
 		select {
 		case <-deadline.C:
 			s.handleDeadlineTimer()
 		case <-interval.C:
-			go s.handleIntervalTimer(conn)
+			go s.handleIntervalTimer(conn, interval)
 		case raw := <-rawPackets:
 			s.handleRawPacket(raw)
 		case err := <-s.finishReqs:
@@ -184,7 +190,7 @@ func (s *Session) Run() error {
 
 // RequestStop requests the stop the execution of the session
 func (s *Session) RequestStop() {
-	if s.isFinished {
+	if s.IsFinished() {
 		return
 	}
 
@@ -194,11 +200,17 @@ func (s *Session) RequestStop() {
 
 // IsStarted returns whether this session is started
 func (s *Session) IsStarted() bool {
+	s.statusMutex.Lock()
+	defer s.statusMutex.Unlock()
+
 	return s.isStarted
 }
 
 // IsFinished returns whether this session is finished
 func (s *Session) IsFinished() bool {
+	s.statusMutex.Lock()
+	defer s.statusMutex.Unlock()
+
 	return s.isFinished
 }
 
@@ -294,12 +306,17 @@ func (s *Session) handleDeadlineTimer() {
 }
 
 // handleIntervalTimer is responsible for handling when the interval timer is triggered, sending a new echo request.
-func (s *Session) handleIntervalTimer(conn *icmp.PacketConn) {
+func (s *Session) handleIntervalTimer(conn *icmp.PacketConn, interval *time.Ticker) {
 	s.logger.Trace("Interval ticker has been triggered")
 
-	// checks if we have to stop somewhere and if we are already there
 	if s.reachedRequestLimit() {
 		s.logger.Trace("Not firing more requests as we have reached the set count")
+		interval.Stop()
+
+		s.reqW.Wait()
+
+		s.logger.Info("Requesting to finish the session")
+		s.finishReqs <- nil
 		return
 	}
 
@@ -328,6 +345,9 @@ func (s *Session) handleIntervalTimer(conn *icmp.PacketConn) {
 	ch := s.rMap.GetOrCreate(uint16(selectedSeq))
 	defer s.rMap.Erase(uint16(selectedSeq))
 
+	s.reqW.Add(1)
+	defer s.reqW.Done()
+
 	timeout := s.getTimeoutDuration()
 	select {
 	case rt := <-ch:
@@ -336,10 +356,10 @@ func (s *Session) handleIntervalTimer(conn *icmp.PacketConn) {
 			break
 		}
 
-		s.processRoundTrip(rt)
+		go s.processRoundTrip(rt)
 	case <-time.After(timeout):
 		rt := buildTimedOutRT(selectedSeq, timeout)
-		s.processRoundTrip(rt)
+		go s.processRoundTrip(rt)
 	}
 }
 
@@ -382,7 +402,7 @@ func (s *Session) handleFinishRequest(err error, wg *sync.WaitGroup) error {
 	wg.Wait()           // waiting for polling to return
 
 	s.finished <- true // sending to stop, if it came from there
-	s.isFinished = true
+	s.setIsFinished(true)
 
 	s.logger.Info("Calling ending callbacks")
 	for _, f := range s.onFinish {
@@ -415,6 +435,22 @@ func (s *Session) getTimeoutDuration() time.Duration {
 	return time.Second * time.Duration(s.settings.Timeout)
 }
 
+// setIsFinished updates the isFinished property to val
+func (s *Session) setIsFinished(val bool) {
+	s.statusMutex.Lock()
+	defer s.statusMutex.Unlock()
+
+	s.isFinished = val
+}
+
+// setIsStarted updates the isStarted property to val
+func (s *Session) setIsStarted(val bool) {
+	s.statusMutex.Lock()
+	defer s.statusMutex.Unlock()
+
+	s.isStarted = val
+}
+
 // Returns whether the deadline setting is active.
 func (s *Session) isDeadlineActive() bool {
 	return s.settings.Deadline > 0
@@ -433,7 +469,7 @@ func (s *Session) reachedRequestLimit() bool {
 
 // processRoundTrip calls all handlers for a round trip.
 func (s *Session) processRoundTrip(rt *RoundTrip) {
-	if s.isFinished {
+	if s.IsFinished() {
 		return
 	}
 
@@ -445,13 +481,5 @@ func (s *Session) processRoundTrip(rt *RoundTrip) {
 	s.logger.Info("Calling all handlers for latest round trip")
 	for _, f := range s.onRecv {
 		f(s, rt)
-	}
-
-	// checks if we have to stop somewhere and if we are already there
-	if s.reachedRequestLimit() {
-		s.logger.Info("Not firing more requests as we have reached the set count")
-
-		s.logger.Info("Requesting to finish the session")
-		s.finishReqs <- nil
 	}
 }
