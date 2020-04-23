@@ -47,6 +47,12 @@ type Session struct {
 	// finished is the channel that will signal the end of the session run.
 	finished chan bool
 
+	// isFinished contains whether the session has been finished
+	isStarted bool
+
+	// isFinished contains whether the session has been finished
+	isFinished bool
+
 	// rtHandlers are the callback functions called when a round trip happens.
 	// The function parameters are the session.
 	rtHandlers []func(*Session, *RoundTrip)
@@ -112,6 +118,8 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 		cname:        cname,
 		settings:     settings,
 		logger:       logger,
+		isStarted:    false,
+		isFinished:   false,
 	}
 
 	session.AddStHandler(initStatsCb)
@@ -126,6 +134,7 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 // Start starts the sequence of pings
 func (s *Session) Start() error {
 	defer close(s.finishReqs)
+	s.isStarted = true
 
 	if !s.settings.IsPrivileged {
 		s.logger.Warnf("You are running as non-privileged, meaning that it is not possible to receive TimeExceeded ICMP"+
@@ -180,6 +189,7 @@ func (s *Session) Stop() {
 	s.logger.Info("Requesting to end session")
 	s.finishReqs <- nil
 	<-s.finished
+	s.isFinished = true
 }
 
 // Address is the resolved address of the target hostname in this session
