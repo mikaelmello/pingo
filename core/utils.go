@@ -76,3 +76,19 @@ func clearTimer(t *time.Timer) {
 		<-t.C
 	}
 }
+
+// max returns the max number between a and b
+func max(a int64, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// min returns the min number between a and b
+func min(a int64, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}

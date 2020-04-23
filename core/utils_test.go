@@ -30,3 +30,19 @@ func TestClearTimerStopsTimer(t *testing.T) {
 
 	assert.False(t, timer.Stop())
 }
+
+func TestMax(t *testing.T) {
+	assert.Equal(t, int64(5), max(5, 4))
+	assert.Equal(t, int64(5), max(5, 5))
+	assert.Equal(t, int64(6), max(5, 6))
+	assert.Equal(t, int64(-1), max(-1, -2))
+	assert.Equal(t, int64(0), max(-1, 0))
+}
+
+func TestMin(t *testing.T) {
+	assert.Equal(t, int64(4), min(5, 4))
+	assert.Equal(t, int64(5), min(5, 5))
+	assert.Equal(t, int64(5), min(5, 6))
+	assert.Equal(t, int64(-2), min(-1, -2))
+	assert.Equal(t, int64(-1), min(-1, 0))
+}

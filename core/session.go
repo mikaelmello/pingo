@@ -424,9 +424,7 @@ func (s *Session) processRoundTrip(rt *RoundTrip) {
 
 	if rt.Res == Replied {
 		rtt := rt.Time.Nanoseconds()
-		if rtt > s.Stats.RTTsMax {
-			s.Stats.RTTsMax = rtt
-		}
+		s.Stats.RTTsMax = max(s.Stats.RTTsMax, rtt)
 		s.Stats.RTTs = append(s.Stats.RTTs, rtt) // stats purposes
 		s.Stats.TotalRecv++
 	}
