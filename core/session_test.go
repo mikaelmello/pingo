@@ -29,27 +29,28 @@ func TestNewSession(t *testing.T) {
 	assert.False(t, s.isFinished)
 }
 
-// TestSessionStop verifies that a stop call correctly stops a started session
+// TestSessionRequestStop verifies that a stop call correctly stops a started session
 func TestSessionStop(t *testing.T) {
 	s, err := NewSession("localhost", DefaultSettings())
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 
-	c1 := make(chan bool, 1)
-
-	go s.Start()
+	c1 := make(chan error, 1)
 
 	go func() {
-		s.Stop()
-		c1 <- true
+		err := s.Run()
+		c1 <- err
 	}()
+
+	s.RequestStop()
 
 	// Listen on our channel AND a timeout channel - which ever happens first.
 	select {
-	case <-c1:
+	case err := <-c1:
+		assert.NoError(t, err)
 		assert.True(t, s.isStarted)
 		assert.True(t, s.isFinished)
-	case <-time.After(2 * time.Second):
+	case <-time.After(1 * time.Second):
 		t.Error("Stop did not stop the session in time")
 	}
 }

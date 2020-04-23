@@ -131,8 +131,14 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 	return session, nil
 }
 
-// Start starts the sequence of pings
-func (s *Session) Start() error {
+// Run executes the sequence of pings
+func (s *Session) Run() error {
+	if s.isFinished {
+		return fmt.Errorf("This session has already finished")
+	}
+	if s.isStarted {
+		return fmt.Errorf("This session has already started")
+	}
 	defer close(s.finishReqs)
 	s.isStarted = true
 
@@ -184,12 +190,24 @@ func (s *Session) Start() error {
 	}
 }
 
-// Stop finishes the execution of the session
-func (s *Session) Stop() {
+// RequestStop requests the stop the execution of the session
+func (s *Session) RequestStop() {
+	if s.isFinished {
+		return
+	}
+
 	s.logger.Info("Requesting to end session")
 	s.finishReqs <- nil
-	<-s.finished
-	s.isFinished = true
+}
+
+// IsStarted returns whether this session is started
+func (s *Session) IsStarted() bool {
+	return s.isStarted
+}
+
+// IsFinished returns whether this session is finished
+func (s *Session) IsFinished() bool {
+	return s.isFinished
 }
 
 // Address is the resolved address of the target hostname in this session
