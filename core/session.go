@@ -81,14 +81,14 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 
 	logger.Infof("Resolving address %s", address)
 
-	cname, err := net.LookupCNAME(address)
-	if err != nil {
-		return nil, fmt.Errorf("error while looking up cname of address %s: %w", address, err)
-	}
-
 	ipaddr, err := net.ResolveIPAddr("ip", address)
 	if err != nil {
 		return nil, fmt.Errorf("error while resolving address %s: %w", address, err)
+	}
+
+	cname, err := net.LookupCNAME(address)
+	if err != nil {
+		return nil, fmt.Errorf("error while looking up cname of address %s: %w", address, err)
 	}
 
 	logger.Infof("Address %s resolved to IP Address %s", address, ipaddr.String())
@@ -346,6 +346,7 @@ func (s *Session) handleFinishRequest(err error, wg *sync.WaitGroup) error {
 	}
 
 	s.finished <- true // sending to stop, if it came from there
+	s.isFinished = true
 	s.logger.Info("Session ended")
 	return nil
 }
