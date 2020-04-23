@@ -31,7 +31,10 @@ var rootCmd = &cobra.Command{
 		}
 
 		r.Start()
-		r.Wait()
+		err = r.Wait()
+		if err != nil {
+			println(err)
+		}
 	},
 }
 

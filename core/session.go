@@ -134,10 +134,10 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 // Run executes the sequence of pings
 func (s *Session) Run() error {
 	if s.isFinished {
-		return fmt.Errorf("This session has already finished")
+		return fmt.Errorf("this session has already finished")
 	}
 	if s.isStarted {
-		return fmt.Errorf("This session has already started")
+		return fmt.Errorf("this session has already started")
 	}
 	defer close(s.finishReqs)
 	s.isStarted = true
