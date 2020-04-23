@@ -29,6 +29,9 @@ type Session struct {
 	// lastSequence is the sequence number of the last sent echo request.
 	lastSequence int
 
+	// iaddr contains the original input address
+	iaddr string
+
 	// addr contains the net.Addr of the target host
 	addr net.Addr
 
@@ -79,31 +82,6 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 
 	logger.Debug("Settings configured correctly")
 
-	logger.Infof("Resolving address %s", address)
-
-	ipaddr, err := net.ResolveIPAddr("ip", address)
-	if err != nil {
-		return nil, fmt.Errorf("error while resolving address %s: %w", address, err)
-	}
-
-	cname, err := net.LookupCNAME(address)
-	if err != nil {
-		return nil, fmt.Errorf("error while looking up cname of address %s: %w", address, err)
-	}
-
-	logger.Infof("Address %s resolved to IP Address %s", address, ipaddr.String())
-
-	var resAddr net.Addr = ipaddr
-	if !settings.IsPrivileged {
-		// The provided dst must be net.UDPAddr when conn is a non-privileged
-		// datagram-oriented ICMP endpoint.
-		logger.Infof("Running as non-privileged, setting address to UDP")
-		resAddr = &net.UDPAddr{IP: ipaddr.IP, Zone: ipaddr.Zone}
-	}
-
-	ipv4 := isIPv4(ipaddr.IP)
-	logger.Infof("Resolved IP address is IPv4: %t", ipv4)
-
 	r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 
 	session := &Session{
@@ -113,10 +91,8 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 		finished:     make(chan bool, 1),
 		id:           r.Intn(math.MaxUint16),
 		bigID:        r.Uint64(),
-		isIPv4:       ipv4,
-		addr:         resAddr,
-		cname:        cname,
 		settings:     settings,
+		iaddr:        address,
 		logger:       logger,
 		isStarted:    false,
 		isFinished:   false,
@@ -125,8 +101,8 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 	session.AddStHandler(initStatsCb)
 	session.AddEndHandler(finishStatsCb)
 
-	logger.Infof("Created session with id %d, bigID %d, ipv4 %t, addr %s",
-		session.id, session.bigID, session.isIPv4, session.addr.String())
+	logger.Infof("Created session with id %d, bigID %d, iaddr %s",
+		session.id, session.bigID, session.iaddr)
 
 	return session, nil
 }
@@ -139,12 +115,18 @@ func (s *Session) Run() error {
 	if s.isStarted {
 		return fmt.Errorf("this session has already started")
 	}
+
 	defer close(s.finishReqs)
 	s.isStarted = true
 
 	if !s.settings.IsPrivileged {
 		s.logger.Warnf("You are running as non-privileged, meaning that it is not possible to receive TimeExceeded ICMP"+
 			" messages. Echo requests that exceed the configured TTL of %d will be treated as timed out", s.settings.TTL)
+	}
+
+	err := s.resolve()
+	if err != nil {
+		return err
 	}
 
 	s.logger.Info("Calling start callbacks")
@@ -233,6 +215,39 @@ func (s *Session) AddStHandler(handler func(*Session, *icmp.Message)) {
 // AddEndHandler adds a handler function that will be called when the session ends
 func (s *Session) AddEndHandler(handler func(*Session)) {
 	s.endHandlers = append(s.endHandlers, handler)
+}
+
+// resolve resolves the input address setting the session ip address and cname
+func (s *Session) resolve() error {
+	s.logger.Infof("Resolving address %s", s.iaddr)
+
+	ipaddr, err := net.ResolveIPAddr("ip", s.iaddr)
+	if err != nil {
+		return fmt.Errorf("error while resolving address %s: %w", s.iaddr, err)
+	}
+
+	cname, err := net.LookupCNAME(s.iaddr)
+	if err != nil {
+		return fmt.Errorf("error while looking up cname of address %s: %w", s.iaddr, err)
+	}
+
+	s.logger.Infof("Address %s resolved to IP Address %s", s.iaddr, ipaddr.String())
+
+	var resAddr net.Addr = ipaddr
+	if !s.settings.IsPrivileged {
+		// The provided dst must be net.UDPAddr when conn is a non-privileged
+		// datagram-oriented ICMP endpoint.
+		s.logger.Infof("Running as non-privileged, setting address to UDP")
+		resAddr = &net.UDPAddr{IP: ipaddr.IP, Zone: ipaddr.Zone}
+	}
+
+	ipv4 := isIPv4(ipaddr.IP)
+	s.logger.Infof("Resolved IP address is IPv4: %t", ipv4)
+
+	s.cname = cname
+	s.isIPv4 = ipv4
+	s.addr = resAddr
+	return nil
 }
 
 // initTimers initializes all timers used to manage the session flow

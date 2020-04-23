@@ -68,11 +68,11 @@ func (s *Session) buildEchoRequest() *icmp.Message {
 	s.logger.Tracef("Body data %x", data)
 
 	msg := &icmp.Message{
-		Type: s.getICMPType(),
+		Type: s.getICMPTypeEcho(),
 		Code: echoCode,
 		Body: body,
 	}
-	s.logger.Tracef("ICMP message with type %s and code %d", s.getICMPType(), echoCode)
+	s.logger.Tracef("ICMP message with type %s and code %d", s.getICMPTypeEcho(), echoCode)
 
 	return msg
 }
@@ -177,10 +177,19 @@ func (s *Session) preProcessRawPacket(raw *rawPacket) (*RoundTrip, error) {
 	switch body := m.Body.(type) {
 	case *icmp.TimeExceeded:
 		s.logger.Info("Received a TimeExceeded message")
+
 		var origdgram []byte
 		if s.isIPv4 {
+			if len(body.Data) < 28 {
+				return nil, fmt.Errorf("received TimeExceeded does not minimum length that we need."+
+					" %d bytes received of min %d", 28, len(body.Data))
+			}
 			origdgram = body.Data[20:28]
 		} else {
+			if len(body.Data) < 48 {
+				return nil, fmt.Errorf("received TimeExceeded does not minimum length that we need."+
+					" %d bytes received of min %d", 48, len(body.Data))
+			}
 			origdgram = body.Data[40:48]
 		}
 
@@ -230,7 +239,7 @@ func (s *Session) preProcessRawPacket(raw *rawPacket) (*RoundTrip, error) {
 		}
 
 		if len(body.Data) < dataLength {
-			return nil, fmt.Errorf("missing data, %d bytes out of %d", len(body.Data), dataLength)
+			return nil, fmt.Errorf("missing data, %d bytes received of min %d", len(body.Data), dataLength)
 		}
 
 		// retrieve the info we serialized
@@ -273,7 +282,7 @@ func (s *Session) preProcessRawPacket(raw *rawPacket) (*RoundTrip, error) {
 }
 
 // getICMPType returns the appropriate type to be used in the ICMP request of this session.
-func (s *Session) getICMPType() icmp.Type {
+func (s *Session) getICMPTypeEcho() icmp.Type {
 	if s.isIPv4 {
 		return ipv4.ICMPTypeEcho
 	}

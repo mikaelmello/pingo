@@ -2,15 +2,12 @@ package core
 
 import (
 	"math"
-	"net"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/icmp"
-	"golang.org/x/net/ipv4"
-	"golang.org/x/net/ipv6"
 )
 
 // TestNewSession verifies that the variables are correctly initialized
@@ -110,6 +107,15 @@ func TestSessionAddEndHandler(t *testing.T) {
 
 	s.AddEndHandler(h)
 	assert.Equal(t, prevlen+1, len(s.endHandlers))
+}
+
+// TODO(how): Implement this test when we refactor the code to use interfaces allowing us to mock
+func TestSessionResolve(t *testing.T) {
+	s, err := NewSession("localhost", DefaultSettings())
+	assert.NoError(t, err)
+	assert.NotNil(t, s)
+
+	// s.resolve()
 }
 
 // TestSessionInitTimers verifies that all three timers are properly initialized
@@ -215,21 +221,21 @@ func TestSessionHandleRawPacket1(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 
-	rawpacket, ttl, ip, err := buildEchoReply(s)
+	pkt, err := buildEchoReply(s.id, s.lastSequence, s.bigID, s.isIPv4)
 	assert.NoError(t, err)
 
 	interval := time.NewTimer(0)
 	timeout := time.NewTimer(0)
 	ch := make(chan bool, 1)
 	rth := func(s *Session, rt *RoundTrip) {
-		assert.Equal(t, ttl, rt.TTL)
-		assert.Equal(t, ip, rt.Src)
+		assert.Equal(t, pkt.cm.TTL, rt.TTL)
+		assert.Equal(t, pkt.cm.Src, rt.Src)
 		assert.Equal(t, Replied, rt.Res)
 		ch <- true
 	}
 
 	s.AddRtHandler(rth)
-	s.handleRawPacket(rawpacket, interval, timeout)
+	s.handleRawPacket(pkt, interval, timeout)
 	assert.Empty(t, s.finishReqs)
 	assert.False(t, timeout.Stop())
 	assert.NotEmpty(t, ch)
@@ -243,21 +249,21 @@ func TestSessionHandleRawPacket2(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 
-	rawpacket, ttl, ip, err := buildTimeExceeded(s)
+	pkt, err := buildTimeExceeded(uint16(s.id), uint16(s.lastSequence), s.isIPv4)
 	assert.NoError(t, err)
 
 	interval := time.NewTimer(0)
 	timeout := time.NewTimer(0)
 	ch := make(chan bool, 1)
 	rth := func(s *Session, rt *RoundTrip) {
-		assert.Equal(t, ttl, rt.TTL)
-		assert.Equal(t, ip, rt.Src)
+		assert.Equal(t, pkt.cm.TTL, rt.TTL)
+		assert.Equal(t, pkt.cm.Src, rt.Src)
 		assert.Equal(t, TTLExpired, rt.Res)
 		ch <- true
 	}
 
 	s.AddRtHandler(rth)
-	s.handleRawPacket(rawpacket, interval, timeout)
+	s.handleRawPacket(pkt, interval, timeout)
 	assert.NotEmpty(t, ch)
 	assert.Empty(t, s.finishReqs)
 	assert.False(t, timeout.Stop())
@@ -511,94 +517,4 @@ func TestSessionProcessRoundTrip3(t *testing.T) {
 
 	assert.Equal(t, prevlen, len(s.Stats.RTTs))
 	assert.Equal(t, prevrecv, s.Stats.TotalRecv)
-}
-
-func buildTimeExceeded(s *Session) (*rawPacket, int, net.IP, error) {
-	padlen := 24
-	if !s.isIPv4 {
-		padlen = 44
-	}
-	pad := make([]byte, padlen)
-	id := uint16ToBytes(uint16(s.id))            // ensure same source
-	seq := uint16ToBytes(uint16(s.lastSequence)) // calculate rtt
-	data := append(append(pad, id...), seq...)
-	body := &icmp.TimeExceeded{
-		Data: data,
-	}
-
-	var tp icmp.Type = ipv4.ICMPTypeTimeExceeded
-	if !s.isIPv4 {
-		tp = ipv6.ICMPTypeTimeExceeded
-	}
-
-	msg := &icmp.Message{
-		Type: tp,
-		Code: 0,
-		Body: body,
-	}
-	bytes, err := msg.Marshal(nil)
-	if err != nil {
-		return nil, 0, nil, err
-	}
-
-	ttl := 5
-	ip := net.IPv4(127, 0, 0, 1)
-	return &rawPacket{
-		content: bytes,
-		length:  len(bytes),
-		cm: &controlMessage{
-			TTL: ttl,
-			Src: ip,
-		},
-	}, ttl, ip, nil
-}
-
-func buildEchoReply(s *Session) (*rawPacket, int, net.IP, error) {
-	now := time.Now()
-	bigID := uint64ToBytes(s.bigID) // ensure same source
-	tstp := unixNanoToBytes(now)    // calculate rtt
-	data := append(bigID, tstp...)
-	body := &icmp.Echo{
-		ID:   s.id,
-		Seq:  s.lastSequence,
-		Data: data,
-	}
-
-	var tp icmp.Type = ipv4.ICMPTypeEchoReply
-	if !s.isIPv4 {
-		tp = ipv6.ICMPTypeEchoReply
-	}
-
-	msg := &icmp.Message{
-		Type: tp,
-		Code: echoCode,
-		Body: body,
-	}
-
-	bytes, err := msg.Marshal(nil)
-	if err != nil {
-		return nil, 0, nil, err
-	}
-
-	ttl := 5
-	ip := net.IPv4(127, 0, 0, 1)
-	return &rawPacket{
-		content: bytes,
-		length:  len(bytes),
-		cm: &controlMessage{
-			TTL: ttl,
-			Src: ip,
-		},
-	}, ttl, ip, nil
-}
-
-func buildRoundTrip(res RoundTripResult) *RoundTrip {
-	return &RoundTrip{
-		TTL:  5,
-		Seq:  0,
-		Len:  24,
-		Src:  net.IPv4(127, 0, 0, 1),
-		Time: time.Millisecond,
-		Res:  res,
-	}
 }
