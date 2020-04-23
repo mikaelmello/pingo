@@ -322,6 +322,12 @@ func (s *Session) handleIntervalTimer(conn *icmp.PacketConn, interval *time.Tick
 
 	s.reqMutex.Lock()
 
+	if s.IsFinished() {
+		s.logger.Info("Exiting interval timer handler because the session has been finished")
+		s.reqMutex.Unlock()
+		return
+	}
+
 	selectedSeq := s.lastSeq + 1
 	s.Stats.EchoRequested()
 	s.lastSeq = (s.lastSeq + 1) & 0xffff
@@ -360,6 +366,9 @@ func (s *Session) handleIntervalTimer(conn *icmp.PacketConn, interval *time.Tick
 	case <-time.After(timeout):
 		rt := buildTimedOutRT(selectedSeq, timeout)
 		go s.processRoundTrip(rt)
+	case err := <-s.finishReqs:
+		// we should exit and not wait anymore
+		s.finishReqs <- err
 	}
 }
 
@@ -392,6 +401,9 @@ func (s *Session) handleRawPacket(raw *rawPacket) {
 
 // handleFinishRequest handles where we should finish the session.
 func (s *Session) handleFinishRequest(err error, wg *sync.WaitGroup) error {
+	s.reqMutex.Lock()
+	defer s.reqMutex.Unlock()
+
 	if err != nil {
 		return err
 	}
