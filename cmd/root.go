@@ -26,14 +26,14 @@ var rootCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		r, err := newRunner(args[0], settings)
 		if err != nil {
-			println(err)
+			println(err.Error())
 			return
 		}
 
 		r.Start()
 		err = r.Wait()
 		if err != nil {
-			println(err)
+			println(err.Error())
 		}
 	},
 }
