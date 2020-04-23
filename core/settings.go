@@ -79,6 +79,10 @@ func (s *Settings) validate() error {
 		return fmt.Errorf("interval must be non-negative")
 	}
 
+	if s.Interval <= 0.001 {
+		return fmt.Errorf("interval must be larger than 0.001s")
+	}
+
 	if (s.Interval * float64(time.Second)) >= float64(time.Hour*24*365*10) {
 		return fmt.Errorf("interval must be smaller than 10 years, very arbitrary I know")
 	}

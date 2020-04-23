@@ -16,7 +16,7 @@ func TestNewSession(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 
-	assert.Equal(t, 0, s.lastSequence)
+	assert.Equal(t, 0, s.lastSeq)
 	assert.GreaterOrEqual(t, math.MaxUint16, s.id)
 	assert.Len(t, s.onStart, 1, "new session does not start with one st handler")
 	assert.Len(t, s.onFinish, 1, "new session does not start with one end handler")
@@ -176,10 +176,10 @@ func TestSessionHandleRawPacket1(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 
-	pkt, err := buildEchoReply(s.id, s.lastSequence, s.bigID, s.isIPv4)
+	pkt, err := buildEchoReply(s.id, s.lastSeq, s.bigID, s.isIPv4)
 	assert.NoError(t, err)
 
-	ch := s.rMap.GetOrCreate(uint16(s.lastSequence))
+	ch := s.rMap.GetOrCreate(uint16(s.lastSeq))
 
 	s.handleRawPacket(pkt)
 	assert.Empty(t, s.finishReqs)
@@ -194,10 +194,10 @@ func TestSessionHandleRawPacket2(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 
-	pkt, err := buildTimeExceeded(uint16(s.id), uint16(s.lastSequence), s.isIPv4)
+	pkt, err := buildTimeExceeded(uint16(s.id), uint16(s.lastSeq), s.isIPv4)
 	assert.NoError(t, err)
 
-	ch := s.rMap.GetOrCreate(uint16(s.lastSequence))
+	ch := s.rMap.GetOrCreate(uint16(s.lastSeq))
 
 	s.handleRawPacket(pkt)
 	assert.NotEmpty(t, ch)

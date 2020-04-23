@@ -142,7 +142,7 @@ func (s *Session) Run() error {
 
 	s.logger.Info("Calling start callbacks")
 	for _, f := range s.onStart {
-		f(s, s.buildEchoRequest())
+		f(s, s.buildEchoRequest(0))
 	}
 
 	conn, err := s.getConnection()
@@ -150,10 +150,6 @@ func (s *Session) Run() error {
 		return err
 	}
 	defer conn.Close()
-
-	deadline, interval := s.initTimers()
-	defer deadline.Stop()
-	defer interval.Stop()
 
 	// channel that will stream all incoming ICMP packets
 	s.logger.Debug("Creating channel of incoming raw packets")
@@ -165,6 +161,12 @@ func (s *Session) Run() error {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go s.pollConnection(&wg, conn, rawPackets)
+
+	deadline, interval := s.initTimers()
+	defer deadline.Stop()
+	defer interval.Stop()
+
+	go s.handleIntervalTimer(conn)
 
 	for {
 		select {
@@ -301,33 +303,38 @@ func (s *Session) handleIntervalTimer(conn *icmp.PacketConn) {
 		return
 	}
 
-	msg, err := s.sendEchoRequest(conn)
+	s.reqMutex.Lock()
+
+	selectedSeq := s.lastSeq + 1
+	s.Stats.EchoRequested()
+	s.lastSeq = (s.lastSeq + 1) & 0xffff
+
+	err := s.sendEchoRequest(conn, selectedSeq)
+	s.logger.Infof("Incrementing number of packages sent and of last sequence to %d and %d respectively",
+		s.Stats.GetTotalSent(), s.lastSeq)
+
+	s.reqMutex.Unlock()
+
 	if err != nil {
+		s.Stats.EchoRequestError()
 		s.logger.Errorf("Could not send echo request: %s", err)
 		return
 	}
 
-	body, ok := msg.Body.(*icmp.Echo)
-	if !ok {
-		s.logger.Errorf("returned message in sendEchoRequest does not have icmp.Echo body")
-		return
-	}
-
-	ch := s.rMap.GetOrCreate(uint16(body.Seq))
-	defer s.rMap.Erase(uint16(body.Seq))
+	ch := s.rMap.GetOrCreate(uint16(selectedSeq))
+	defer s.rMap.Erase(uint16(selectedSeq))
 
 	timeout := s.getTimeoutDuration()
 	select {
 	case rt := <-ch:
 		if rt == nil {
-			rt := buildTimedOutRT(body.Seq, timeout)
-			s.processRoundTrip(rt)
-			return
+			s.Stats.EchoRequestError()
+			break
 		}
 
 		s.processRoundTrip(rt)
 	case <-time.After(timeout):
-		rt := buildTimedOutRT(body.Seq, timeout)
+		rt := buildTimedOutRT(selectedSeq, timeout)
 		s.processRoundTrip(rt)
 	}
 }
@@ -370,13 +377,14 @@ func (s *Session) handleFinishRequest(err error, wg *sync.WaitGroup) error {
 	s.finishReqs <- nil // forwarding to polling if it did not come from there
 	wg.Wait()           // waiting for polling to return
 
+	s.finished <- true // sending to stop, if it came from there
+	s.isFinished = true
+
 	s.logger.Info("Calling ending callbacks")
 	for _, f := range s.onFinish {
 		f(s)
 	}
 
-	s.finished <- true // sending to stop, if it came from there
-	s.isFinished = true
 	s.logger.Info("Session ended")
 	return nil
 }
@@ -421,6 +429,9 @@ func (s *Session) reachedRequestLimit() bool {
 
 // processRoundTrip calls all handlers for a round trip.
 func (s *Session) processRoundTrip(rt *RoundTrip) {
+	if s.isFinished {
+		return
+	}
 
 	if rt.Res == Replied {
 		rtt := rt.Time.Nanoseconds()

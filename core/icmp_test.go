@@ -27,7 +27,7 @@ func TestSessionBuildEchoRequest(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 
-	msg := s.buildEchoRequest()
+	msg := s.buildEchoRequest(s.lastSeq)
 
 	assert.Equal(t, s.getICMPTypeEcho(), msg.Type)
 	assert.Equal(t, echoCode, msg.Code)

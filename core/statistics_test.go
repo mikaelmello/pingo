@@ -31,7 +31,7 @@ func TestInitStatsCb(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 
-	msg := s.buildEchoRequest()
+	msg := s.buildEchoRequest(0)
 
 	now := time.Now()
 	initStatsCb(s, msg)

@@ -25,36 +25,27 @@ const (
 
 // sendEchoRequest sends an echo request to the address defined in the Session receiving as a parameter
 // the open connection with the target host.
-func (s *Session) sendEchoRequest(conn *icmp.PacketConn) (*icmp.Message, error) {
-	s.reqMutex.Lock()
-	defer s.reqMutex.Unlock()
-
+func (s *Session) sendEchoRequest(conn *icmp.PacketConn, seq int) error {
 	s.logger.Infof("Making a new echo request to address %s", s.addr.String())
 
-	msg := s.buildEchoRequest()
+	msg := s.buildEchoRequest(seq)
 	bytesmsg, err := msg.Marshal(nil)
 	if err != nil {
-		return msg, fmt.Errorf("could not marshal ICMP message with Echo body: %w", err)
+		return fmt.Errorf("could not marshal ICMP message with Echo body: %w", err)
 	}
 
 	s.logger.Infof("Writing ICMP message %x to address %s", bytesmsg, s.addr.String())
 	_, err = conn.WriteTo(bytesmsg, s.addr)
 
-	// request failing or not, we must update these values
-	s.Stats.EchoRequested()
-	s.lastSeq = (s.lastSeq + 1) & 0xffff
-	s.logger.Infof("Incrementing number of packages sent and of last sequence to %d and %d respectively",
-		s.Stats.GetTotalSent(), s.lastSeq)
-
 	if err != nil {
-		return msg, fmt.Errorf("error while sending echo request: %w", err)
+		return fmt.Errorf("error while sending echo request: %w", err)
 	}
 
-	return msg, nil
+	return nil
 }
 
 // Builds the next ICMP package, does not modify session's state.
-func (s *Session) buildEchoRequest() *icmp.Message {
+func (s *Session) buildEchoRequest(seq int) *icmp.Message {
 	s.logger.Tracef("Building new echo request")
 
 	now := time.Now()
@@ -64,7 +55,7 @@ func (s *Session) buildEchoRequest() *icmp.Message {
 
 	body := &icmp.Echo{
 		ID:   s.id,
-		Seq:  s.lastSeq + 1, // verify pair of request-replies
+		Seq:  seq, // verify pair of request-replies
 		Data: data,
 	}
 
@@ -95,7 +86,7 @@ func (s *Session) pollConnection(wg *sync.WaitGroup, conn *icmp.PacketConn, recv
 		default:
 			buffer := make([]byte, 256)
 
-			maxwait := time.Millisecond * 200
+			maxwait := time.Millisecond * 1
 
 			s.logger.Tracef("Setting read deadline to %s", maxwait)
 			if err := conn.SetReadDeadline(time.Now().Add(maxwait)); err != nil {
