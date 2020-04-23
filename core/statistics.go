@@ -73,13 +73,8 @@ func finishStatsCb(s *Session) {
 	for _, rtt := range s.Stats.RTTs {
 		rttsSum += rtt
 		rttsSqSum += rtt * rtt
-
-		if rtt > s.Stats.RTTsMax {
-			s.Stats.RTTsMax = rtt
-		}
-		if rtt < s.Stats.RTTsMin {
-			s.Stats.RTTsMin = rtt
-		}
+		s.Stats.RTTsMax = max(s.Stats.RTTsMax, rtt)
+		s.Stats.RTTsMin = min(s.Stats.RTTsMin, rtt)
 	}
 
 	s.Stats.RTTsAvg = rttsSum / rttsCnt
