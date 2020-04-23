@@ -1,14 +1,30 @@
 # pingo
 
-Between **cpping** and **pingo**, I had to learn Go to use the latter.
-
 **pingo** is, currently, a simple CLI interface with the intent to test the reachability of a host on an IP network. Quite similar to [ping](https://en.wikipedia.org/wiki/Ping_(networking_utility)).
+
+Between **cpping** and **pingo**, I had to learn Go to claim the latter. Learning the best ways to use the language's features everytime I tried one and it didn't quite work was a great experience (and I'm quite honest here).
 
 It supports some features that **ping** supports, such as a custom timeout for the first `ECHO_REQUEST`, custom interval between `ECHO_REQUEST`s, a maximum amount of running time of the application, a custom TTL for packets and setting the max amount of `ECHO_REQUESTS` that can be sent before stopping.
 
 It also supports both IPv4 and IPv6 addresses, along with hostnames.
 
-The goal now is to add some final touches to the core package so that we can expose a fully-featured API that can be used as a package in other Go projects.
+## Installation
+
+To install the program executable execute:
+
+``` sh
+$ go get github.com/mikaelmello/pingo/...
+$ $GOPATH/bin/pingo # to execute the program
+```
+
+To manually build it, clone the repository and then build it
+
+``` sh
+$ git clone github.com/mikaelmello/pingo
+$ cd pingo
+$ go build
+$ ./pingo # to execute the program
+```
 
 ## CLI Usage
 
@@ -73,6 +89,12 @@ On Windows, you must use the privileged mode.
 
 **Warning:** If you use the non-privileged mode, it is not possible to receive Time Exceeded ICMP messages, meaning that
 a request that exceeded its time to live will never receive a response, timing out instead.
+
+## Next steps
+
+- Refactor and use more interfaces, so that we can improve our testing, maybe DI?
+- Remove our tests' dependency on net packages for better mocking, maybe DI [2]?
+- Add support to be used as a package
 
 ## Examples
 
