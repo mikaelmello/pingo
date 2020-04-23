@@ -274,7 +274,7 @@ func (s *Session) getICMPType() icmp.Type {
 		return ipv4.ICMPTypeEcho
 	}
 
-	return ipv6.ICMPTypeEchoReply
+	return ipv6.ICMPTypeEchoRequest
 }
 
 // getNetwork returns the appropriate ICMP network value of the session.
