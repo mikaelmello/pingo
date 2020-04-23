@@ -290,7 +290,13 @@ func (s *Session) handleDeadlineTimer() {
 
 // handleIntervalTimer is responsible for handling when the interval timer is triggered, sending a new echo request.
 func (s *Session) handleIntervalTimer(conn *icmp.PacketConn) {
-	s.logger.Info("Interval timer has fired")
+	s.logger.Trace("Interval ticker has been triggered")
+
+	// checks if we have to stop somewhere and if we are already there
+	if s.reachedRequestLimit() {
+		s.logger.Trace("Not firing more requests as we have reached the set count")
+		return
+	}
 
 	msg, err := s.sendEchoRequest(conn)
 	if err != nil {
@@ -342,14 +348,6 @@ func (s *Session) handleRawPacket(raw *rawPacket) {
 	}
 
 	ch <- rt
-
-	// checks if we have to stop somewhere and if we are already there
-	if s.reachedRequestLimit() {
-		s.logger.Info("Not firing more requests as we have reached the set count")
-
-		s.logger.Info("Requesting to finish the session")
-		s.finishReqs <- nil
-	}
 }
 
 // handleFinishRequest handles where we should finish the session.
@@ -423,5 +421,13 @@ func (s *Session) processRoundTrip(rt *RoundTrip) {
 	s.logger.Info("Calling all handlers for latest round trip")
 	for _, f := range s.onRecv {
 		f(s, rt)
+	}
+
+	// checks if we have to stop somewhere and if we are already there
+	if s.reachedRequestLimit() {
+		s.logger.Info("Not firing more requests as we have reached the set count")
+
+		s.logger.Info("Requesting to finish the session")
+		s.finishReqs <- nil
 	}
 }
