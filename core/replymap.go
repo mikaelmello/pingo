@@ -23,8 +23,8 @@ func newReplyMap() ReplyMap {
 }
 
 func (m *replyMap) GetOrCreate(key uint16) chan *RoundTrip {
-	m.rwm.RLock()
-	defer m.rwm.RUnlock()
+	m.rwm.Lock()
+	defer m.rwm.Unlock()
 	ch, ok := m.allData[key]
 	if !ok {
 		ch = make(chan *RoundTrip, 1)
