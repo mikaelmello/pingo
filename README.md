@@ -100,7 +100,8 @@ a request that exceeded its time to live will never receive a response, timing o
 ## Examples
 
 ``` sh
-mikael@mello pingo ±|master|→ ./pingo cloudflare.com
+$ ./pingo cloudflare.com
+
 PING cloudflare.com. (104.17.175.85:0) 24 bytes of data
 24 bytes from cloudflare.com. (104.17.175.85:0): icmp_seq=1 ttl=51 time=156.164ms
 24 bytes from cloudflare.com. (104.17.175.85:0): icmp_seq=2 ttl=51 time=155.883ms
@@ -113,7 +114,8 @@ rtt min/avg/max/mdev = 153.783/155.169/156.165/0.939 ms
 ```
 
 ```sh
-mikael@mello pingo ±|master|→ sudo ./pingo cloudflare.com -c 2 -t 10 --privileged
+$ sudo ./pingo cloudflare.com -c 2 -t 10 --privileged
+
 PING cloudflare.com. (104.17.176.85) 24 bytes of data
 From [random ip]: icmp_seq=1 time to live exceeded
 From [random ip]: icmp_seq=2 time to live exceeded
@@ -124,7 +126,8 @@ rtt min/avg/max/mdev = 0.000/0.000/0.000/0.000 ms
 ```
 
 ``` sh
-mikael@mello pingo ±|master|→ ./pingo localhost -c 4
+$ ./pingo localhost -c 4
+
 PING localhost. (127.0.0.1) 24 bytes of data
 24 bytes from localhost. (127.0.0.1): icmp_seq=1 ttl=64 time=289µs
 24 bytes from localhost. (127.0.0.1): icmp_seq=2 ttl=64 time=312µs
@@ -137,7 +140,8 @@ rtt min/avg/max/mdev = 0.266/0.287/0.313/0.017 ms
 ```
 
 ``` sh
-mikael@mello pingo ±|master|→ ./pingo example.com --log-level 3 -c 1
+$ ./pingo example.com --log-level 3 -c 1
+
 WARN[0000] You are running as non-privileged, meaning that it is not possible to receive TimeExceeded ICMP messages. Echo requests that exceed the configured TTL of 64 will be treated as timed out 
 PING example.com. (93.184.216.34:0) 24 bytes of data
 24 bytes from example.com. (93.184.216.34:0): icmp_seq=1 ttl=54 time=135.416ms
