@@ -68,7 +68,7 @@ type Session struct {
 
 	// onSend is a list of callback functions called when an echo request is sent.
 	// The function parameters are the session and the message.
-	onSend []func(*Session, *icmp.Message)
+	onSend []func(*Session)
 
 	// onRecv is a list of callback functions called when a round trip happens.
 	// The function parameters are the session.
@@ -218,7 +218,7 @@ func (s *Session) AddOnStart(handler func(*Session, *icmp.Message)) {
 }
 
 // AddOnSend adds a handler function that will be called after an echo request is replied or expires
-func (s *Session) AddOnSend(handler func(*Session, *icmp.Message)) {
+func (s *Session) AddOnSend(handler func(*Session)) {
 	s.onSend = append(s.onSend, handler)
 }
 
@@ -314,6 +314,10 @@ func (s *Session) handleIntervalTimer(conn *icmp.PacketConn) {
 		s.Stats.GetTotalSent(), s.lastSeq)
 
 	s.reqMutex.Unlock()
+
+	for _, f := range s.onSend {
+		f(s)
+	}
 
 	if err != nil {
 		s.Stats.EchoRequestError()
