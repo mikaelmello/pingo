@@ -56,6 +56,9 @@ type Session struct {
 	// isFinished contains whether the session has been finished
 	isFinished bool
 
+	// rMap contains the channels for each seq
+	rMap ReplyMap
+
 	// rtHandlers are the callback functions called when a round trip happens.
 	// The function parameters are the session.
 	rtHandlers []func(*Session, *RoundTrip)
@@ -91,6 +94,7 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 		finished:     make(chan bool, 1),
 		id:           r.Intn(math.MaxUint16),
 		bigID:        r.Uint64(),
+		rMap:         newReplyMap(),
 		settings:     settings,
 		iaddr:        address,
 		logger:       logger,
@@ -160,9 +164,9 @@ func (s *Session) Run() error {
 		case <-deadline.C:
 			s.handleDeadlineTimer()
 		case <-interval.C:
-			s.handleIntervalTimer(conn, interval)
+			s.handleIntervalTimer(conn)
 		case raw := <-rawPackets:
-			s.handleRawPacket(raw, interval)
+			s.handleRawPacket(raw)
 		case err := <-s.finishReqs:
 			return s.handleFinishRequest(err, &wg)
 		}
@@ -248,14 +252,14 @@ func (s *Session) resolve() error {
 }
 
 // initTimers initializes all timers used to manage the session flow
-func (s *Session) initTimers() (deadline *time.Timer, interval *time.Timer) {
+func (s *Session) initTimers() (deadline *time.Timer, interval *time.Ticker) {
 	// timer responsible for shutting down the execution, if enabled
 	s.logger.Debugf("Initializing deadline timer to duration %s", s.getDeadlineDuration())
 	deadline = time.NewTimer(s.getDeadlineDuration())
 
 	// timer responsible for handling the interval between two requests
-	s.logger.Debugf("Initializing interval timer to duration %s", time.Duration(0))
-	interval = time.NewTimer(0)
+	s.logger.Debugf("Initializing interval ticker to duration %s", s.getIntervalDuration())
+	interval = time.NewTicker(s.getIntervalDuration())
 
 	return deadline, interval
 }
@@ -276,7 +280,7 @@ func (s *Session) handleDeadlineTimer() {
 }
 
 // handleIntervalTimer is responsible for handling when the interval timer is triggered, sending a new echo request.
-func (s *Session) handleIntervalTimer(conn *icmp.PacketConn, interval *time.Timer) {
+func (s *Session) handleIntervalTimer(conn *icmp.PacketConn) {
 	s.logger.Info("Interval timer has fired")
 
 	s.logger.Infof("Resetting timeout timer to account for a timeout (%s) of the reply for the next request",
@@ -285,18 +289,30 @@ func (s *Session) handleIntervalTimer(conn *icmp.PacketConn, interval *time.Time
 	msg, err := s.sendEchoRequest(conn)
 	if err != nil {
 		s.logger.Errorf("Could not send echo request: %s", err)
-
-		// this request already failed, clearing timer and resetting interval
-		s.logger.Infof("Stopping timeout timer and resetting interval timer to trigger a new request in %s",
-			s.getIntervalDuration())
-
-		interval.Reset(s.getIntervalDuration())
 		return
+	}
+
+	body, ok := msg.Body.(*icmp.Echo)
+	if !ok {
+		s.logger.Errorf("returned message in sendEchoRequest does not have icmp.Echo body")
+		return
+	}
+
+	ch := s.rMap.Get(uint16(body.Seq))
+	defer s.rMap.Erase(uint16(body.Seq))
+
+	timeout := s.getTimeoutDuration()
+	select {
+	case rt := <-ch:
+		s.processRoundTrip(rt)
+	case <-time.After(timeout):
+		rt := buildTimedOutRT(body.Seq, timeout)
+		s.processRoundTrip(rt)
 	}
 }
 
 // handleRawPacket is responsible for properly handling an incoming raw packet from our connection.
-func (s *Session) handleRawPacket(raw *rawPacket, interval *time.Timer) {
+func (s *Session) handleRawPacket(raw *rawPacket) {
 
 	s.logger.Tracef("Raw packet received: %x", raw.content[:raw.length])
 
@@ -312,12 +328,6 @@ func (s *Session) handleRawPacket(raw *rawPacket, interval *time.Timer) {
 		s.logger.Info("Received raw packet was not a match")
 		return
 	}
-
-	// it is a match, clearing timeout and resetting interval for next request
-	s.logger.Infof("Stopping timeout timer and resetting interval timer to trigger a new request in %s",
-		s.getIntervalDuration())
-
-	interval.Reset(s.getIntervalDuration())
 
 	s.processRoundTrip(rt)
 

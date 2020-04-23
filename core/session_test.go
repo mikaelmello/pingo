@@ -179,7 +179,6 @@ func TestSessionHandleRawPacket1(t *testing.T) {
 	pkt, err := buildEchoReply(s.id, s.lastSequence, s.bigID, s.isIPv4)
 	assert.NoError(t, err)
 
-	interval := time.NewTimer(0)
 	ch := make(chan bool, 1)
 	rth := func(s *Session, rt *RoundTrip) {
 		assert.Equal(t, pkt.cm.TTL, rt.TTL)
@@ -189,7 +188,7 @@ func TestSessionHandleRawPacket1(t *testing.T) {
 	}
 
 	s.AddRtHandler(rth)
-	s.handleRawPacket(pkt, interval)
+	s.handleRawPacket(pkt)
 	assert.Empty(t, s.finishReqs)
 	assert.NotEmpty(t, ch)
 }
@@ -205,7 +204,6 @@ func TestSessionHandleRawPacket2(t *testing.T) {
 	pkt, err := buildTimeExceeded(uint16(s.id), uint16(s.lastSequence), s.isIPv4)
 	assert.NoError(t, err)
 
-	interval := time.NewTimer(0)
 	ch := make(chan bool, 1)
 	rth := func(s *Session, rt *RoundTrip) {
 		assert.Equal(t, pkt.cm.TTL, rt.TTL)
@@ -215,7 +213,7 @@ func TestSessionHandleRawPacket2(t *testing.T) {
 	}
 
 	s.AddRtHandler(rth)
-	s.handleRawPacket(pkt, interval)
+	s.handleRawPacket(pkt)
 	assert.NotEmpty(t, ch)
 	assert.Empty(t, s.finishReqs)
 }
