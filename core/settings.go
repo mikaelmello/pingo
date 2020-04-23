@@ -37,6 +37,9 @@ type Settings struct {
 
 	// LoggingLevel defines the level of the session logger.
 	LoggingLevel uint32
+
+	// Flood defines whether we should treat as Flood
+	Flood bool
 }
 
 // DefaultSettings returns the default settings for a ping session, change as you wish.
@@ -55,6 +58,7 @@ func DefaultSettings() *Settings {
 		Interval:     1,
 		IsPrivileged: false,
 		LoggingLevel: 0,
+		Flood:        false,
 	}
 }
 
@@ -75,12 +79,20 @@ func (s *Settings) validate() error {
 		return fmt.Errorf("timeout must be a positive integer")
 	}
 
+	if s.Flood && !s.IsPrivileged {
+		return fmt.Errorf("non-privileged mode can not use flood option")
+	}
+
+	if s.Flood && s.IsPrivileged {
+		s.Interval = 0.01
+	}
+
 	if s.Interval < 0 {
 		return fmt.Errorf("interval must be non-negative")
 	}
 
-	if s.Interval <= 0.001 {
-		return fmt.Errorf("interval must be larger than 0.001s")
+	if s.Interval < 0.01 {
+		return fmt.Errorf("interval must be larger than or equal to 0.01s")
 	}
 
 	if (s.Interval * float64(time.Second)) >= float64(time.Hour*24*365*10) {
@@ -88,7 +100,7 @@ func (s *Settings) validate() error {
 	}
 
 	if s.Interval <= 0.2 && !s.IsPrivileged {
-		return fmt.Errorf("minimal interval allowed for non-privileged mod is 0.2s")
+		return fmt.Errorf("minimal interval allowed for non-privileged mode is 0.2s")
 	}
 
 	return nil

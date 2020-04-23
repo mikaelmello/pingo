@@ -108,12 +108,34 @@ func TestSettingsLargeInterval(t *testing.T) {
 	assert.Error(t, settings.validate())
 }
 
+func TestSettingsFloodPrivileged(t *testing.T) {
+	settings := DefaultSettings()
+	settings.Flood = true
+	settings.IsPrivileged = true
+	assert.NoError(t, settings.validate())
+}
+
+func TestSettingsFloodUnprivileged(t *testing.T) {
+	settings := DefaultSettings()
+	settings.Flood = true
+	settings.IsPrivileged = false
+	assert.Error(t, settings.validate())
+}
+
 func TestSettingsZeroIntervalPrivileged(t *testing.T) {
 	settings := DefaultSettings()
 	settings.Interval = 0
 	settings.IsPrivileged = true
+	assert.Error(t, settings.validate())
+}
+
+func TestSettingsMinIntervalPrivileged(t *testing.T) {
+	settings := DefaultSettings()
+	settings.Interval = 0.01
+	settings.IsPrivileged = true
 	assert.NoError(t, settings.validate())
 }
+
 func TestSettings200msInterval(t *testing.T) {
 	settings := DefaultSettings()
 	settings.Interval = 0.2

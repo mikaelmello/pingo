@@ -35,7 +35,7 @@ func TestSessionBuildEchoRequest(t *testing.T) {
 	switch body := msg.Body.(type) {
 	case *icmp.Echo:
 		assert.Equal(t, s.id, body.ID)
-		assert.Equal(t, s.lastSeq+1, body.Seq)
+		assert.Equal(t, s.lastSeq, body.Seq)
 
 		// retrieve the info we serialized
 		bigID := bytesToUint64(body.Data[:8])

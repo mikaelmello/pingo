@@ -8,7 +8,14 @@ import (
 	"golang.org/x/net/icmp"
 )
 
-func printOnStart(s *core.Session, msg *icmp.Message) {
+// registerStd registers its callbacks to be called by the session
+func registerStd(s *core.Session) {
+	s.AddOnStart(stdPrintOnStart)
+	s.AddOnRecv(stdPrintOnRoundTrip)
+	s.AddOnFinish(stdPrintOnEnd)
+}
+
+func stdPrintOnStart(s *core.Session, msg *icmp.Message) {
 	msgbytes, err := msg.Marshal(nil)
 	if err != nil {
 		fmt.Printf("PING %s (%s)\n", s.Address(), s.CNAME())
@@ -18,7 +25,7 @@ func printOnStart(s *core.Session, msg *icmp.Message) {
 	fmt.Printf("PING %s (%s) %d bytes of data\n", s.CNAME(), s.Address(), len(msgbytes))
 }
 
-func printOnRoundTrip(s *core.Session, rt *core.RoundTrip) {
+func stdPrintOnRoundTrip(s *core.Session, rt *core.RoundTrip) {
 	switch rt.Res {
 	case core.Replied:
 		fmt.Printf("%d bytes from %s: icmp_seq=%d ttl=%d time=%s\n",
@@ -30,7 +37,7 @@ func printOnRoundTrip(s *core.Session, rt *core.RoundTrip) {
 	}
 }
 
-func printOnEnd(s *core.Session) {
+func stdPrintOnEnd(s *core.Session) {
 	println()
 	// cname, err := net.LookupCNAME(address)
 

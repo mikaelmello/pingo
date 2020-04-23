@@ -22,9 +22,11 @@ func newRunner(addr string, settings *core.Settings) (*Runner, error) {
 		return nil, err
 	}
 
-	session.AddOnStart(printOnStart)
-	session.AddOnRecv(printOnRoundTrip)
-	session.AddOnFinish(printOnEnd)
+	if settings.Flood {
+		registerFlood(session)
+	} else {
+		registerStd(session)
+	}
 
 	return &Runner{
 		session: session,
