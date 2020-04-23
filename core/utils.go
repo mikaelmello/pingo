@@ -58,13 +58,6 @@ func bytesToUint64(b []byte) uint64 {
 	return binary.BigEndian.Uint64(b)
 }
 
-// clearTimer stops a timer and ensures that it is empty after the stop.
-func clearTimer(t *time.Timer) {
-	if !t.Stop() {
-		<-t.C
-	}
-}
-
 // max returns the max number between a and b
 func max(a uint64, b uint64) uint64 {
 	if a > b {
