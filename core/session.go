@@ -59,13 +59,17 @@ type Session struct {
 	// rMap contains the channels for each seq
 	rMap ReplyMap
 
-	// onRecv is a list of callback functions called when a round trip happens.
-	// The function parameters are the session.
-	onRecv []func(*Session, *RoundTrip)
-
 	// onStart is a list of callback functions called when the session starts.
 	// The function parameters are the session and a sample first echo request.
 	onStart []func(*Session, *icmp.Message)
+
+	// onSend is a list of callback functions called when an echo request is sent.
+	// The function parameters are the session and the message.
+	onSend []func(*Session, *icmp.Message)
+
+	// onRecv is a list of callback functions called when a round trip happens.
+	// The function parameters are the session.
+	onRecv []func(*Session, *RoundTrip)
 
 	// onFinish is a list of callback functions called when the session ends.
 	// The function parameters are the session.
@@ -164,7 +168,7 @@ func (s *Session) Run() error {
 		case <-deadline.C:
 			s.handleDeadlineTimer()
 		case <-interval.C:
-			s.handleIntervalTimer(conn)
+			go s.handleIntervalTimer(conn)
 		case raw := <-rawPackets:
 			s.handleRawPacket(raw)
 		case err := <-s.finishReqs:
@@ -203,14 +207,19 @@ func (s *Session) CNAME() string {
 	return s.cname
 }
 
-// AddOnRecv adds a handler function that will be called after an echo request is replied or expires
-func (s *Session) AddOnRecv(handler func(*Session, *RoundTrip)) {
-	s.onRecv = append(s.onRecv, handler)
-}
-
 // AddOnStart adds a handler function that will be called when the session starts
 func (s *Session) AddOnStart(handler func(*Session, *icmp.Message)) {
 	s.onStart = append(s.onStart, handler)
+}
+
+// AddOnSend adds a handler function that will be called after an echo request is replied or expires
+func (s *Session) AddOnSend(handler func(*Session, *icmp.Message)) {
+	s.onSend = append(s.onSend, handler)
+}
+
+// AddOnRecv adds a handler function that will be called after an echo request is replied or expires
+func (s *Session) AddOnRecv(handler func(*Session, *RoundTrip)) {
+	s.onRecv = append(s.onRecv, handler)
 }
 
 // AddOnFinish adds a handler function that will be called when the session ends
@@ -283,9 +292,6 @@ func (s *Session) handleDeadlineTimer() {
 func (s *Session) handleIntervalTimer(conn *icmp.PacketConn) {
 	s.logger.Info("Interval timer has fired")
 
-	s.logger.Infof("Resetting timeout timer to account for a timeout (%s) of the reply for the next request",
-		s.getTimeoutDuration())
-
 	msg, err := s.sendEchoRequest(conn)
 	if err != nil {
 		s.logger.Errorf("Could not send echo request: %s", err)
@@ -298,7 +304,7 @@ func (s *Session) handleIntervalTimer(conn *icmp.PacketConn) {
 		return
 	}
 
-	ch := s.rMap.Get(uint16(body.Seq))
+	ch := s.rMap.GetOrCreate(uint16(body.Seq))
 	defer s.rMap.Erase(uint16(body.Seq))
 
 	timeout := s.getTimeoutDuration()
@@ -329,7 +335,13 @@ func (s *Session) handleRawPacket(raw *rawPacket) {
 		return
 	}
 
-	s.processRoundTrip(rt)
+	ch, ok := s.rMap.Get(uint16(rt.Seq))
+	if !ok {
+		s.logger.Info("Received raw packet from seq that has already timed out")
+		return
+	}
+
+	ch <- rt
 
 	// checks if we have to stop somewhere and if we are already there
 	if s.reachedRequestLimit() {

@@ -201,21 +201,11 @@ func (s *Session) preProcessRawPacket(raw *rawPacket) (*RoundTrip, error) {
 
 		// Check if TLE came from same ID
 		if echoBody.ID != s.id {
-			s.logger.Debugf("TimeExceeded message does not match last sent echo request, parsed id differs. Expected: %d."+
+			s.logger.Debugf("TimeExceeded message does not match session, parsed id differs. Expected: %d."+
 				" Actual: %d", s.id, echoBody.ID)
 			return nil, nil
 		}
-		s.logger.Debugf("TimeExceeded message echoBody ID matches last sent echo request. Expected: %d.", s.id)
-
-		// checks if the body seq matches the seq of the last echo request
-		if echoBody.Seq != s.lastSequence {
-			s.logger.Debugf("TimeExceeded message does not match last sent echo request, parsed seq differs. Expected: %d."+
-				" Actual: %d", s.lastSequence, echoBody.Seq)
-			return nil, nil
-		}
-		s.logger.Debugf("TimeExceeded message echoBody Seq matches last sent echo request. Expected: %d.", s.lastSequence)
-
-		s.logger.Info("TimeExceeded matches last sent echo request.")
+		s.logger.Debugf("TimeExceeded message echoBody ID matches session ID.")
 
 		rt := &RoundTrip{
 			TTL:  raw.cm.TTL,
@@ -236,7 +226,7 @@ func (s *Session) preProcessRawPacket(raw *rawPacket) (*RoundTrip, error) {
 				s.logger.Debugf("Echo reply body ID does not match session ID. Expected: %d. Actual: %d.", s.id, body.ID)
 				return nil, nil
 			}
-			s.logger.Debugf("Echo reply body ID matches last sent echo request. Expected: %d.", s.id)
+			s.logger.Debugf("Echo reply body ID matches session ID. Expected: %d.", s.id)
 		}
 
 		if len(body.Data) < dataLength {
@@ -246,26 +236,16 @@ func (s *Session) preProcessRawPacket(raw *rawPacket) (*RoundTrip, error) {
 		// retrieve the info we serialized
 		bigID := bytesToUint64(body.Data[:8])
 		tstp := bytesToUnixNano(body.Data[8:])
-		// checks if the body seq matches the seq of the last echo request
-		if body.Seq != s.lastSequence {
-			s.logger.Debugf("Echo reply body Seq does not match session's last sequence. Expected: %d. Actual: %d.",
-				s.lastSequence, body.Seq)
-			return nil, nil
-		}
-		s.logger.Debugf("Echo reply body Seq matches last sent echo request. Expected: %d.", s.lastSequence)
 
 		// checks if our unique identifier also matches
 		if bigID != s.bigID {
-			s.logger.Debugf("Echo reply body data big ID does not match session's big ID. Expected: %d. Actual: %d.",
+			s.logger.Debugf("Echo reply body data big ID does not match session big ID. Expected: %d. Actual: %d.",
 				s.bigID, bigID)
 			return nil, nil
 		}
-		s.logger.Debugf("Echo reply body data bigID matches session's big ID. Expected: %d.", s.bigID)
+		s.logger.Debugf("Echo reply body data bigID matches session big ID. Expected: %d.", s.bigID)
 
 		rttduration := receivedTstp.Sub(tstp)
-
-		s.logger.Infof("Echo reply matches last sent echo request. RTT is %s, TTL is %d and source address is %s",
-			rttduration, raw.cm.TTL, raw.cm.Src.String())
 
 		rt := &RoundTrip{
 			TTL:  raw.cm.TTL,
