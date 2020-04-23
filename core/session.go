@@ -140,9 +140,8 @@ func (s *Session) Run() error {
 	}
 	defer conn.Close()
 
-	deadline, timeout, interval := s.initTimers()
+	deadline, interval := s.initTimers()
 	defer deadline.Stop()
-	defer timeout.Stop()
 	defer interval.Stop()
 
 	// channel that will stream all incoming ICMP packets
@@ -160,12 +159,10 @@ func (s *Session) Run() error {
 		select {
 		case <-deadline.C:
 			s.handleDeadlineTimer()
-		case <-timeout.C:
-			s.handleTimeoutTimer(interval)
 		case <-interval.C:
-			s.handleIntervalTimer(conn, interval, timeout)
+			s.handleIntervalTimer(conn, interval)
 		case raw := <-rawPackets:
-			s.handleRawPacket(raw, interval, timeout)
+			s.handleRawPacket(raw, interval)
 		case err := <-s.finishReqs:
 			return s.handleFinishRequest(err, &wg)
 		}
@@ -251,20 +248,16 @@ func (s *Session) resolve() error {
 }
 
 // initTimers initializes all timers used to manage the session flow
-func (s *Session) initTimers() (deadline *time.Timer, timeout *time.Timer, interval *time.Timer) {
+func (s *Session) initTimers() (deadline *time.Timer, interval *time.Timer) {
 	// timer responsible for shutting down the execution, if enabled
 	s.logger.Debugf("Initializing deadline timer to duration %s", s.getDeadlineDuration())
 	deadline = time.NewTimer(s.getDeadlineDuration())
-
-	// timer responsible for timing out requests and requiring new ones
-	s.logger.Debugf("Initializing timeout timer to duration %s", s.getTimeoutDuration())
-	timeout = time.NewTimer(s.getTimeoutDuration())
 
 	// timer responsible for handling the interval between two requests
 	s.logger.Debugf("Initializing interval timer to duration %s", time.Duration(0))
 	interval = time.NewTimer(0)
 
-	return deadline, timeout, interval
+	return deadline, interval
 }
 
 // handleTimeoutTimer is responsible for handling when the deadline timer is triggered, checking if the deadline
@@ -282,38 +275,14 @@ func (s *Session) handleDeadlineTimer() {
 	s.finishReqs <- nil
 }
 
-// handleTimeoutTimer is responsible for handling when the timeout timer is triggered, timing out the latest request
-// and resetting the interval timer.
-func (s *Session) handleTimeoutTimer(interval *time.Timer) {
-
-	s.logger.Info("Timeout timer has fired")
-
-	rt := s.buildTimedOutRT()
-	s.processRoundTrip(rt)
-
-	if s.reachedRequestLimit() {
-		s.logger.Info("Not firing more requests as we have reached the set count")
-
-		s.logger.Info("Requesting to finish the session")
-		s.finishReqs <- nil
-		return
-	}
-
-	s.logger.Infof("Resetting interval timer to trigger a new request in %s", s.getIntervalDuration())
-
-	interval.Reset(s.getIntervalDuration())
-}
-
 // handleIntervalTimer is responsible for handling when the interval timer is triggered, sending a new echo request.
-func (s *Session) handleIntervalTimer(conn *icmp.PacketConn, interval *time.Timer, timeout *time.Timer) {
+func (s *Session) handleIntervalTimer(conn *icmp.PacketConn, interval *time.Timer) {
 	s.logger.Info("Interval timer has fired")
 
 	s.logger.Infof("Resetting timeout timer to account for a timeout (%s) of the reply for the next request",
 		s.getTimeoutDuration())
 
-	timeout.Reset(s.getTimeoutDuration())
-
-	err := s.sendEchoRequest(conn)
+	msg, err := s.sendEchoRequest(conn)
 	if err != nil {
 		s.logger.Errorf("Could not send echo request: %s", err)
 
@@ -322,12 +291,12 @@ func (s *Session) handleIntervalTimer(conn *icmp.PacketConn, interval *time.Time
 			s.getIntervalDuration())
 
 		interval.Reset(s.getIntervalDuration())
-		clearTimer(timeout)
+		return
 	}
 }
 
 // handleRawPacket is responsible for properly handling an incoming raw packet from our connection.
-func (s *Session) handleRawPacket(raw *rawPacket, interval *time.Timer, timeout *time.Timer) {
+func (s *Session) handleRawPacket(raw *rawPacket, interval *time.Timer) {
 
 	s.logger.Tracef("Raw packet received: %x", raw.content[:raw.length])
 
@@ -348,7 +317,6 @@ func (s *Session) handleRawPacket(raw *rawPacket, interval *time.Timer, timeout 
 	s.logger.Infof("Stopping timeout timer and resetting interval timer to trigger a new request in %s",
 		s.getIntervalDuration())
 
-	clearTimer(timeout)
 	interval.Reset(s.getIntervalDuration())
 
 	s.processRoundTrip(rt)
@@ -420,18 +388,6 @@ func (s *Session) isMaxCountActive() bool {
 func (s *Session) reachedRequestLimit() bool {
 	// checks if we have to stop somewhere and if we are already there
 	return s.isMaxCountActive() && s.Stats.TotalSent >= s.settings.MaxCount
-}
-
-// buildTimedOutRT builds a round trip object containing data relevant to a timed out request.
-func (s *Session) buildTimedOutRT() *RoundTrip {
-	return &RoundTrip{
-		TTL:  0,
-		Time: s.getTimeoutDuration(),
-		Len:  0,
-		Seq:  s.lastSequence,
-		Src:  nil,
-		Res:  TimedOut,
-	}
 }
 
 // processRoundTrip calls all handlers for a round trip.

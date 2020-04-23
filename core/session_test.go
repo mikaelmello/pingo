@@ -124,9 +124,8 @@ func TestSessionInitTimers(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 
-	deadline, timeout, interval := s.initTimers()
+	deadline, interval := s.initTimers()
 	assert.NotNil(t, deadline)
-	assert.NotNil(t, timeout)
 	assert.NotNil(t, interval)
 }
 
@@ -160,50 +159,6 @@ func TestSessionHandleDeadlineTimer2(t *testing.T) {
 	assert.NotEmpty(t, s.finishReqs)
 }
 
-// TestSessionHandleTimeoutTimer1 verifies the proper behavior
-// of the handler when we have not reached the request limit
-func TestSessionHandleTimeoutTimer1(t *testing.T) {
-	s, err := NewSession("localhost", DefaultSettings())
-	assert.NoError(t, err)
-	assert.NotNil(t, s)
-
-	interval := time.NewTimer(0)
-	ch := make(chan bool, 1)
-	rth := func(s *Session, rt *RoundTrip) {
-		assert.Equal(t, TimedOut, rt.Res)
-		ch <- true
-	}
-
-	s.AddRtHandler(rth)
-	s.handleTimeoutTimer(interval)
-	assert.NotEmpty(t, ch)
-	assert.Empty(t, s.finishReqs)
-}
-
-// TestSessionHandleTimeoutTimer2 verifies the proper behavior
-// of the handler when we have reached the request limit
-func TestSessionHandleTimeoutTimer2(t *testing.T) {
-	settings := DefaultSettings()
-	settings.MaxCount = 1
-	settings.IsMaxCountDefault = false
-	s, err := NewSession("localhost", settings)
-	assert.NoError(t, err)
-	assert.NotNil(t, s)
-	s.Stats.TotalSent = settings.MaxCount
-
-	interval := time.NewTimer(0)
-	ch := make(chan bool, 1)
-	rth := func(s *Session, rt *RoundTrip) {
-		assert.Equal(t, TimedOut, rt.Res)
-		ch <- true
-	}
-
-	s.AddRtHandler(rth)
-	s.handleTimeoutTimer(interval)
-	assert.NotEmpty(t, ch)
-	assert.NotEmpty(t, s.finishReqs)
-}
-
 // TODO(how): Implement this test when we refactor the code to use interfaces allowing us to mock
 func TestSessionHandleIntervalTimer(t *testing.T) {
 	s, err := NewSession("localhost", DefaultSettings())
@@ -213,7 +168,7 @@ func TestSessionHandleIntervalTimer(t *testing.T) {
 	// s.handleIntervalTimer()
 }
 
-// TestSessionHandleTimeoutTimer1 verifies the proper behavior
+// TestSessionHandleRawPacket1 verifies the proper behavior
 // of the handler when we have not reached the request limit
 // and received a proper echo reply
 func TestSessionHandleRawPacket1(t *testing.T) {
@@ -225,7 +180,6 @@ func TestSessionHandleRawPacket1(t *testing.T) {
 	assert.NoError(t, err)
 
 	interval := time.NewTimer(0)
-	timeout := time.NewTimer(0)
 	ch := make(chan bool, 1)
 	rth := func(s *Session, rt *RoundTrip) {
 		assert.Equal(t, pkt.cm.TTL, rt.TTL)
@@ -235,13 +189,12 @@ func TestSessionHandleRawPacket1(t *testing.T) {
 	}
 
 	s.AddRtHandler(rth)
-	s.handleRawPacket(pkt, interval, timeout)
+	s.handleRawPacket(pkt, interval)
 	assert.Empty(t, s.finishReqs)
-	assert.False(t, timeout.Stop())
 	assert.NotEmpty(t, ch)
 }
 
-// TestSessionHandleTimeoutTimer2 verifies the proper behavior
+// TestSessionHandleRawPacket2 verifies the proper behavior
 // of the handler when we have not reached the request limit
 // and received a ttl exceed
 func TestSessionHandleRawPacket2(t *testing.T) {
@@ -253,7 +206,6 @@ func TestSessionHandleRawPacket2(t *testing.T) {
 	assert.NoError(t, err)
 
 	interval := time.NewTimer(0)
-	timeout := time.NewTimer(0)
 	ch := make(chan bool, 1)
 	rth := func(s *Session, rt *RoundTrip) {
 		assert.Equal(t, pkt.cm.TTL, rt.TTL)
@@ -263,13 +215,12 @@ func TestSessionHandleRawPacket2(t *testing.T) {
 	}
 
 	s.AddRtHandler(rth)
-	s.handleRawPacket(pkt, interval, timeout)
+	s.handleRawPacket(pkt, interval)
 	assert.NotEmpty(t, ch)
 	assert.Empty(t, s.finishReqs)
-	assert.False(t, timeout.Stop())
 }
 
-// TestSessionHandleTimeoutTimer3 verifies the proper behavior
+// TestSessionHandleFinishRequest verifies the proper behavior
 // of the handler when we have reached the request limit
 // and received a proper reply
 func TestSessionHandleFinishRequest(t *testing.T) {
@@ -437,7 +388,7 @@ func TestSessionBuildTimedOutRT(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 
-	rt := s.buildTimedOutRT()
+	rt := buildTimedOutRT(s.lastSequence, s.getTimeoutDuration())
 
 	assert.Equal(t, TimedOut, rt.Res)
 	assert.Equal(t, s.lastSequence, rt.Seq)

@@ -26,3 +26,15 @@ type RoundTrip struct {
 	Time time.Duration   // rtt, successful-only
 	Res  RoundTripResult // result
 }
+
+// buildTimedOutRT builds a round trip object containing data relevant to a timed out request.
+func buildTimedOutRT(seq int, time time.Duration) *RoundTrip {
+	return &RoundTrip{
+		TTL:  0,
+		Time: time,
+		Len:  0,
+		Seq:  seq,
+		Src:  nil,
+		Res:  TimedOut,
+	}
+}

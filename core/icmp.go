@@ -25,12 +25,13 @@ const (
 
 // sendEchoRequest sends an echo request to the address defined in the Session receiving as a parameter
 // the open connection with the target host.
-func (s *Session) sendEchoRequest(conn *icmp.PacketConn) error {
+func (s *Session) sendEchoRequest(conn *icmp.PacketConn) (*icmp.Message, error) {
 	s.logger.Infof("Making a new echo request to address %s", s.addr.String())
 
-	bytesmsg, err := s.buildEchoRequest().Marshal(nil)
+	msg := s.buildEchoRequest()
+	bytesmsg, err := msg.Marshal(nil)
 	if err != nil {
-		return fmt.Errorf("could not marshal ICMP message with Echo body: %w", err)
+		return msg, fmt.Errorf("could not marshal ICMP message with Echo body: %w", err)
 	}
 
 	s.logger.Infof("Writing ICMP message %x to address %s", bytesmsg, s.addr.String())
@@ -43,10 +44,10 @@ func (s *Session) sendEchoRequest(conn *icmp.PacketConn) error {
 		s.Stats.TotalSent, s.lastSequence)
 
 	if err != nil {
-		return fmt.Errorf("error while sending echo request: %w", err)
+		return msg, fmt.Errorf("error while sending echo request: %w", err)
 	}
 
-	return nil
+	return msg, nil
 }
 
 // Builds the next ICMP package, does not modify session's state.
