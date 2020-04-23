@@ -53,9 +53,9 @@ func init() {
 	rootCmd.Flags().IntVarP(&settings.Deadline, "deadline", "w", settings.Deadline,
 		"Specify a timeout, in seconds, before ping exits regardless of how many packets have been sent or received. In this case ping does not stop after count packet are sent, it waits either for deadline expire or until count probes are answered or for some error notification from network.")
 	rootCmd.Flags().BoolVarP(&settings.Flood, "flood", "f", settings.Flood,
-		"Flood ping. For every ECHO_REQUEST sent a period ``.'' is printed, while for ever "+
+		"Flood ping. For every ECHO_REQUEST sent a period '.' is printed, while for ever "+
 			"ECHO_REPLY received a backspace is printed. This provides a rapid display of how many "+
-			"packets are being dropped. It sets interval to 0.01s between packets. Only available in"+
+			"packets are being dropped. It sets interval to 0.01s between packets. Only available in "+
 			"privileged mode.")
 	rootCmd.Flags().BoolVarP(&settings.IsPrivileged, "privileged", "p", settings.IsPrivileged,
 		"Whether to use privileged mode. If yes, privileged raw ICMP endpoints are used, non-privileged datagram-oriented otherwise. On Linux, to run unprivileged you must enable the setting 'sudo sysctl -w net.ipv4.ping_group_range=\"0   2147483647\"'. In order to run as a privileged user, you can either run as sudo or execute 'setcap cap_net_raw=+ep <bin path>' to the path of the binary. On Windows, you must run as privileged.")

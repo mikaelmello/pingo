@@ -4,7 +4,7 @@
 
 Between **cpping** and **pingo**, I had to learn Go to claim the latter. Learning the best ways to use the language's features everytime I tried one and it didn't quite work was a great experience (and I'm quite honest here).
 
-It supports some features that **ping** supports, such as a custom timeout for the first `ECHO_REQUEST`, custom interval between `ECHO_REQUEST`s, a maximum amount of running time of the application, a custom TTL for packets and setting the max amount of `ECHO_REQUESTS` that can be sent before stopping.
+It supports some features that **ping** supports, such as a custom timeout for the first `ECHO_REQUEST`, custom interval between `ECHO_REQUEST`s, a maximum amount of running time of the application, a custom TTL for packets and setting the max amount of `ECHO_REQUESTS` that can be sent before stopping and flood!
 
 It also supports both IPv4 and IPv6 addresses, along with hostnames.
 
@@ -41,6 +41,10 @@ Flags:
                          or received. In this case ping does not stop after count packet are sent, it waits either for
                          deadline expire or until count probes are answered or for some error notification from network.
                          (default -1)
+
+  -f, --flood            Flood ping. For every ECHO_REQUEST sent a period '.' is printed, while for ever ECHO_REPLY
+                         received a backspace is printed. This provides a rapid display of how many packets are being
+                         dropped. It sets interval to 0.01s between packets. Only available in privileged mode.
 
   -h, --help             help for pingo
 
