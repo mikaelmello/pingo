@@ -34,8 +34,8 @@ func (m *replyMap) GetOrCreate(key uint16) chan *RoundTrip {
 }
 
 func (m *replyMap) Get(key uint16) (chan *RoundTrip, bool) {
-	m.rwm.RLock()
-	defer m.rwm.RUnlock()
+	m.rwm.Lock()
+	defer m.rwm.Unlock()
 	ch, ok := m.allData[key]
 	return ch, ok
 }

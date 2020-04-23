@@ -26,6 +26,9 @@ const (
 // sendEchoRequest sends an echo request to the address defined in the Session receiving as a parameter
 // the open connection with the target host.
 func (s *Session) sendEchoRequest(conn *icmp.PacketConn) (*icmp.Message, error) {
+	s.reqMutex.Lock()
+	defer s.reqMutex.Unlock()
+
 	s.logger.Infof("Making a new echo request to address %s", s.addr.String())
 
 	msg := s.buildEchoRequest()
@@ -39,9 +42,9 @@ func (s *Session) sendEchoRequest(conn *icmp.PacketConn) (*icmp.Message, error) 
 
 	// request failing or not, we must update these values
 	s.Stats.EchoRequested()
-	s.lastSequence = (s.lastSequence + 1) & 0xffff
+	s.lastSeq = (s.lastSeq + 1) & 0xffff
 	s.logger.Infof("Incrementing number of packages sent and of last sequence to %d and %d respectively",
-		s.Stats.GetTotalSent(), s.lastSequence)
+		s.Stats.GetTotalSent(), s.lastSeq)
 
 	if err != nil {
 		return msg, fmt.Errorf("error while sending echo request: %w", err)
@@ -61,11 +64,11 @@ func (s *Session) buildEchoRequest() *icmp.Message {
 
 	body := &icmp.Echo{
 		ID:   s.id,
-		Seq:  s.lastSequence + 1, // verify pair of request-replies
+		Seq:  s.lastSeq + 1, // verify pair of request-replies
 		Data: data,
 	}
 
-	s.logger.Tracef("Body id %d, seq %d, bigID %d, tstp %s", s.id, s.lastSequence+1, s.bigID, now)
+	s.logger.Tracef("Body id %d, seq %d, bigID %d, tstp %s", s.id, s.lastSeq+1, s.bigID, now)
 	s.logger.Tracef("Body data %x", data)
 
 	msg := &icmp.Message{

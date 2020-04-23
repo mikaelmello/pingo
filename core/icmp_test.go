@@ -35,7 +35,7 @@ func TestSessionBuildEchoRequest(t *testing.T) {
 	switch body := msg.Body.(type) {
 	case *icmp.Echo:
 		assert.Equal(t, s.id, body.ID)
-		assert.Equal(t, s.lastSequence+1, body.Seq)
+		assert.Equal(t, s.lastSeq+1, body.Seq)
 
 		// retrieve the info we serialized
 		bigID := bytesToUint64(body.Data[:8])
@@ -75,7 +75,7 @@ func TestSessionPreProcessRawPacket1(t *testing.T) {
 	assert.NotNil(t, s)
 	s.settings.IsPrivileged = true
 
-	pkt, err := buildEchoReply(s.id, s.lastSequence, s.bigID, s.isIPv4)
+	pkt, err := buildEchoReply(s.id, s.lastSeq, s.bigID, s.isIPv4)
 	assert.NoError(t, err)
 
 	rt, err := s.preProcessRawPacket(pkt)
@@ -85,7 +85,7 @@ func TestSessionPreProcessRawPacket1(t *testing.T) {
 	assert.Equal(t, pkt.cm.Src, rt.Src)
 	assert.Equal(t, pkt.cm.TTL, rt.TTL)
 	assert.Equal(t, pkt.length, rt.Len)
-	assert.Equal(t, s.lastSequence, rt.Seq)
+	assert.Equal(t, s.lastSeq, rt.Seq)
 	assert.Equal(t, Replied, rt.Res)
 }
 
@@ -97,7 +97,7 @@ func TestSessionPreProcessRawPacket2(t *testing.T) {
 	assert.NotNil(t, s)
 
 	id := uint16(s.id)
-	seq := uint16(s.lastSequence)
+	seq := uint16(s.lastSeq)
 	pkt, err := buildTimeExceeded(id, seq, s.isIPv4)
 	assert.NoError(t, err)
 
@@ -108,7 +108,7 @@ func TestSessionPreProcessRawPacket2(t *testing.T) {
 	assert.Equal(t, pkt.cm.Src, rt.Src)
 	assert.Equal(t, pkt.cm.TTL, rt.TTL)
 	assert.Equal(t, pkt.length, rt.Len)
-	assert.Equal(t, s.lastSequence, rt.Seq)
+	assert.Equal(t, s.lastSeq, rt.Seq)
 	assert.Equal(t, TTLExpired, rt.Res)
 }
 
@@ -149,7 +149,7 @@ func TestSessionPreProcessRawPacket5(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 
-	pkt, err := buildEchoReply(s.id, s.lastSequence, s.bigID+1, s.isIPv4)
+	pkt, err := buildEchoReply(s.id, s.lastSeq, s.bigID+1, s.isIPv4)
 	assert.NoError(t, err)
 
 	rt, err := s.preProcessRawPacket(pkt)
@@ -165,7 +165,7 @@ func TestSessionPreProcessRawPacket6(t *testing.T) {
 	assert.NotNil(t, s)
 	s.settings.IsPrivileged = true
 
-	pkt, err := buildEchoReply(s.id+1, s.lastSequence, s.bigID, s.isIPv4)
+	pkt, err := buildEchoReply(s.id+1, s.lastSeq, s.bigID, s.isIPv4)
 	assert.NoError(t, err)
 
 	rt, err := s.preProcessRawPacket(pkt)
@@ -183,7 +183,7 @@ func TestSessionPreProcessRawPacket7(t *testing.T) {
 	// is received, privileged mode is assumed
 
 	id := uint16(s.id)
-	seq := uint16(s.lastSequence)
+	seq := uint16(s.lastSeq)
 	pkt, err := buildTimeExceeded(id+1, seq, s.isIPv4)
 	assert.NoError(t, err)
 

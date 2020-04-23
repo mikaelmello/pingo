@@ -375,22 +375,6 @@ func TestSessionReachedRequestLimit3(t *testing.T) {
 	assert.True(t, s.reachedRequestLimit())
 }
 
-// TestSessionBuildTimedOutRT tests whether the TimedOut RT is properly built
-func TestSessionBuildTimedOutRT(t *testing.T) {
-	s, err := NewSession("localhost", DefaultSettings())
-	assert.NoError(t, err)
-	assert.NotNil(t, s)
-
-	rt := buildTimedOutRT(s.lastSequence, s.getTimeoutDuration())
-
-	assert.Equal(t, TimedOut, rt.Res)
-	assert.Equal(t, s.lastSequence, rt.Seq)
-	assert.Equal(t, s.getTimeoutDuration(), rt.Time)
-	assert.Equal(t, 0, rt.Len)
-	assert.Equal(t, 0, rt.TTL)
-	assert.Nil(t, rt.Src)
-}
-
 // TestSessionProcessRoundTrip1 verifies that the function
 // correctly processes a roundtrip when it is a successful reply
 func TestSessionProcessRoundTrip1(t *testing.T) {

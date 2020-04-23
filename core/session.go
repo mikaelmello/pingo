@@ -26,8 +26,11 @@ type Session struct {
 	// request with better accuracy.
 	bigID uint64
 
-	// lastSequence is the sequence number of the last sent echo request.
-	lastSequence int
+	// lastSeq is the sequence number of the last sent echo request.
+	lastSeq int
+
+	// lastSeqMutex is the mutex to make requests
+	reqMutex sync.Mutex
 
 	// iaddr contains the original input address
 	iaddr string
@@ -92,18 +95,18 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 	r := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 
 	session := &Session{
-		Stats:        NewStatistics(),
-		lastSequence: 0,
-		finishReqs:   make(chan error, 1),
-		finished:     make(chan bool, 1),
-		id:           r.Intn(math.MaxUint16),
-		bigID:        r.Uint64(),
-		rMap:         newReplyMap(),
-		settings:     settings,
-		iaddr:        address,
-		logger:       logger,
-		isStarted:    false,
-		isFinished:   false,
+		Stats:      NewStatistics(),
+		lastSeq:    0,
+		finishReqs: make(chan error, 1),
+		finished:   make(chan bool, 1),
+		id:         r.Intn(math.MaxUint16),
+		bigID:      r.Uint64(),
+		rMap:       newReplyMap(),
+		settings:   settings,
+		iaddr:      address,
+		logger:     logger,
+		isStarted:  false,
+		isFinished: false,
 	}
 
 	session.AddOnStart(initStatsCb)
@@ -316,6 +319,12 @@ func (s *Session) handleIntervalTimer(conn *icmp.PacketConn) {
 	timeout := s.getTimeoutDuration()
 	select {
 	case rt := <-ch:
+		if rt == nil {
+			rt := buildTimedOutRT(body.Seq, timeout)
+			s.processRoundTrip(rt)
+			return
+		}
+
 		s.processRoundTrip(rt)
 	case <-time.After(timeout):
 		rt := buildTimedOutRT(body.Seq, timeout)

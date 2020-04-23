@@ -50,7 +50,7 @@ type statistics struct {
 	totalTTLExpired uint32
 
 	// rttsMutex controls the append of a rtt into the array
-	rttsMutex sync.Mutex
+	rttsMutex sync.RWMutex
 
 	// rtts contains the round-trip times of all successful replies of this session.
 	rtts []uint64
@@ -68,7 +68,7 @@ type statistics struct {
 	rttsSqSum uint64
 
 	// timeMutex controls updates to the times
-	timeMutex sync.Mutex
+	timeMutex sync.RWMutex
 
 	// stTime contains the start time of the session
 	stTime time.Time
@@ -86,6 +86,7 @@ type statistics struct {
 func (s *statistics) SessionStarted() {
 	s.timeMutex.Lock()
 	defer s.timeMutex.Unlock()
+
 	s.stTime = time.Now()
 	s.started = true
 }
@@ -93,6 +94,7 @@ func (s *statistics) SessionStarted() {
 func (s *statistics) SessionEnded() {
 	s.timeMutex.Lock()
 	defer s.timeMutex.Unlock()
+
 	s.endTime = time.Now()
 	s.ended = true
 }
@@ -103,14 +105,15 @@ func (s *statistics) EchoRequested() {
 
 func (s *statistics) EchoReplied(rtt uint64) {
 	atomic.AddUint32(&s.TotalRecv, 1)
-	atomic.AddUint64(&s.rttsSum, rtt)
-	atomic.AddUint64(&s.rttsSqSum, rtt*rtt)
 
 	s.rttsMutex.Lock()
 	defer s.rttsMutex.Unlock()
+
 	s.rtts = append(s.rtts, rtt)
 	s.rttsMax = max(s.rttsMax, rtt)
 	s.rttsMin = min(s.rttsMin, rtt)
+	s.rttsSum += rtt
+	s.rttsSqSum += rtt * rtt
 }
 
 func (s *statistics) EchoTimedOut() {
@@ -122,27 +125,33 @@ func (s *statistics) EchoTTLExpired() {
 }
 
 func (s *statistics) GetStartTime() (time.Time, bool) {
+	s.timeMutex.RLock()
+	defer s.timeMutex.RUnlock()
+
 	return s.stTime, s.started
 }
 
 func (s *statistics) GetEndTime() (time.Time, bool) {
+	s.timeMutex.RLock()
+	defer s.timeMutex.RUnlock()
+
 	return s.endTime, s.ended
 }
 
 func (s *statistics) GetTotalSent() uint32 {
-	return s.totalSent
+	return atomic.LoadUint32(&s.totalSent)
 }
 
 func (s *statistics) GetTotalRecv() uint32 {
-	return s.TotalRecv
+	return atomic.LoadUint32(&s.TotalRecv)
 }
 
 func (s *statistics) GetTotalTimedOut() uint32 {
-	return s.totalTimedOut
+	return atomic.LoadUint32(&s.totalTimedOut)
 }
 
 func (s *statistics) GetTotalTTLExpired() uint32 {
-	return s.totalTTLExpired
+	return atomic.LoadUint32(&s.totalTTLExpired)
 }
 
 func (s *statistics) GetTotalPending() uint32 {
@@ -158,14 +167,23 @@ func (s *statistics) GetPktLoss() float64 {
 }
 
 func (s *statistics) GetRTTMax() uint64 {
+	s.rttsMutex.RLock()
+	defer s.rttsMutex.RUnlock()
+
 	return s.rttsMax
 }
 
 func (s *statistics) GetRTTMin() uint64 {
+	s.rttsMutex.RLock()
+	defer s.rttsMutex.RUnlock()
+
 	return min(s.rttsMax, s.rttsMin)
 }
 
 func (s *statistics) GetRTTAvg() uint64 {
+	s.rttsMutex.RLock()
+	defer s.rttsMutex.RUnlock()
+
 	if len(s.rtts) == 0 {
 		return 0
 	}
@@ -174,6 +192,9 @@ func (s *statistics) GetRTTAvg() uint64 {
 }
 
 func (s *statistics) GetRTTMDev() uint64 {
+	s.rttsMutex.RLock()
+	defer s.rttsMutex.RUnlock()
+
 	if len(s.rtts) == 0 {
 		return 0
 	}
