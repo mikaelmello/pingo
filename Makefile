@@ -9,13 +9,17 @@ GOLANGCI_LINT := go run github.com/golangci/golangci-lint/cmd/golangci-lint
 # ==================================================================================================
 
 .PHONY: all
-all: fix lint test build
+all: install fix lint test build
 
 # ==================================================================================================
 # fix, lint and test
 # ==================================================================================================
 
 PACKAGES_PREFIX := github.com/mikaelmello/pingo
+
+.PHONY: install
+install:
+	go get ./...
 
 .PHONY: fix
 fix:

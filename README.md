@@ -22,7 +22,8 @@ To manually build it, clone the repository and then build it
 ``` sh
 $ git clone https://github.com/mikaelmello/pingo.git
 $ cd pingo
-$ go build
+$ make install
+$ make build
 $ ./pingo # to execute the program
 ```
 
