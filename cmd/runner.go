@@ -22,9 +22,9 @@ func newRunner(addr string, settings *core.Settings) (*Runner, error) {
 		return nil, err
 	}
 
-	session.AddStHandler(printOnStart)
-	session.AddRtHandler(printOnRoundTrip)
-	session.AddEndHandler(printOnEnd)
+	session.AddOnStart(printOnStart)
+	session.AddOnRecv(printOnRoundTrip)
+	session.AddOnFinish(printOnEnd)
 
 	return &Runner{
 		session: session,

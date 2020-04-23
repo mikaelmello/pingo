@@ -59,17 +59,17 @@ type Session struct {
 	// rMap contains the channels for each seq
 	rMap ReplyMap
 
-	// rtHandlers are the callback functions called when a round trip happens.
+	// onRecv is a list of callback functions called when a round trip happens.
 	// The function parameters are the session.
-	rtHandlers []func(*Session, *RoundTrip)
+	onRecv []func(*Session, *RoundTrip)
 
-	// stHandlers are the callback functions called when the session starts.
+	// onStart is a list of callback functions called when the session starts.
 	// The function parameters are the session and a sample first echo request.
-	stHandlers []func(*Session, *icmp.Message)
+	onStart []func(*Session, *icmp.Message)
 
-	// endHandlers are the callback functions called when the session ends.
+	// onFinish is a list of callback functions called when the session ends.
 	// The function parameters are the session.
-	endHandlers []func(*Session)
+	onFinish []func(*Session)
 }
 
 // NewSession creates a new Session
@@ -102,8 +102,8 @@ func NewSession(address string, settings *Settings) (*Session, error) {
 		isFinished:   false,
 	}
 
-	session.AddStHandler(initStatsCb)
-	session.AddEndHandler(finishStatsCb)
+	session.AddOnStart(initStatsCb)
+	session.AddOnFinish(finishStatsCb)
 
 	logger.Infof("Created session with id %d, bigID %d, iaddr %s",
 		session.id, session.bigID, session.iaddr)
@@ -134,7 +134,7 @@ func (s *Session) Run() error {
 	}
 
 	s.logger.Info("Calling start callbacks")
-	for _, f := range s.stHandlers {
+	for _, f := range s.onStart {
 		f(s, s.buildEchoRequest())
 	}
 
@@ -203,19 +203,19 @@ func (s *Session) CNAME() string {
 	return s.cname
 }
 
-// AddRtHandler adds a handler function that will be called after an echo request is replied or expires
-func (s *Session) AddRtHandler(handler func(*Session, *RoundTrip)) {
-	s.rtHandlers = append(s.rtHandlers, handler)
+// AddOnRecv adds a handler function that will be called after an echo request is replied or expires
+func (s *Session) AddOnRecv(handler func(*Session, *RoundTrip)) {
+	s.onRecv = append(s.onRecv, handler)
 }
 
-// AddStHandler adds a handler function that will be called when the session starts
-func (s *Session) AddStHandler(handler func(*Session, *icmp.Message)) {
-	s.stHandlers = append(s.stHandlers, handler)
+// AddOnStart adds a handler function that will be called when the session starts
+func (s *Session) AddOnStart(handler func(*Session, *icmp.Message)) {
+	s.onStart = append(s.onStart, handler)
 }
 
-// AddEndHandler adds a handler function that will be called when the session ends
-func (s *Session) AddEndHandler(handler func(*Session)) {
-	s.endHandlers = append(s.endHandlers, handler)
+// AddOnFinish adds a handler function that will be called when the session ends
+func (s *Session) AddOnFinish(handler func(*Session)) {
+	s.onFinish = append(s.onFinish, handler)
 }
 
 // resolve resolves the input address setting the session ip address and cname
@@ -352,7 +352,7 @@ func (s *Session) handleFinishRequest(err error, wg *sync.WaitGroup) error {
 	wg.Wait()           // waiting for polling to return
 
 	s.logger.Info("Calling ending callbacks")
-	for _, f := range s.endHandlers {
+	for _, f := range s.onFinish {
 		f(s)
 	}
 
@@ -411,7 +411,7 @@ func (s *Session) processRoundTrip(rt *RoundTrip) {
 	}
 
 	s.logger.Info("Calling all handlers for latest round trip")
-	for _, f := range s.rtHandlers {
+	for _, f := range s.onRecv {
 		f(s, rt)
 	}
 }

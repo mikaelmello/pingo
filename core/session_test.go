@@ -18,9 +18,9 @@ func TestNewSession(t *testing.T) {
 
 	assert.Equal(t, 0, s.lastSequence)
 	assert.GreaterOrEqual(t, math.MaxUint16, s.id)
-	assert.Len(t, s.stHandlers, 1, "new session does not start with one st handler")
-	assert.Len(t, s.endHandlers, 1, "new session does not start with one end handler")
-	assert.Empty(t, s.rtHandlers, "new session does not start with empty rt handlers")
+	assert.Len(t, s.onStart, 1, "new session does not start with one st handler")
+	assert.Len(t, s.onFinish, 1, "new session does not start with one end handler")
+	assert.Empty(t, s.onRecv, "new session does not start with empty rt handlers")
 
 	assert.False(t, s.isStarted)
 	assert.False(t, s.isFinished)
@@ -70,43 +70,43 @@ func TestSessionCNAME(t *testing.T) {
 	assert.Equal(t, s.cname, s.CNAME())
 }
 
-// TestSessionAddRtHandler verifies that a function is correctly added to the list
-func TestSessionAddRtHandler(t *testing.T) {
+// TestSessionAddOnRecv verifies that a function is correctly added to the list
+func TestSessionAddOnRecv(t *testing.T) {
 	s, err := NewSession("localhost", DefaultSettings())
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 
 	h := func(*Session, *RoundTrip) {}
-	prevlen := len(s.rtHandlers)
+	prevlen := len(s.onRecv)
 
-	s.AddRtHandler(h)
-	assert.Equal(t, prevlen+1, len(s.rtHandlers))
+	s.AddOnRecv(h)
+	assert.Equal(t, prevlen+1, len(s.onRecv))
 }
 
-// TestSessionAddStHandler verifies that a function is correctly added to the list
-func TestSessionAddStHandler(t *testing.T) {
+// TestSessionAddOnStart verifies that a function is correctly added to the list
+func TestSessionAddOnStart(t *testing.T) {
 	s, err := NewSession("localhost", DefaultSettings())
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 
 	h := func(*Session, *icmp.Message) {}
-	prevlen := len(s.stHandlers)
+	prevlen := len(s.onStart)
 
-	s.AddStHandler(h)
-	assert.Equal(t, prevlen+1, len(s.stHandlers))
+	s.AddOnStart(h)
+	assert.Equal(t, prevlen+1, len(s.onStart))
 }
 
-// TestSessionAddEndHandler verifies that a function is correctly added to the list
-func TestSessionAddEndHandler(t *testing.T) {
+// TestSessionAddOnEnd verifies that a function is correctly added to the list
+func TestSessionAddOnEnd(t *testing.T) {
 	s, err := NewSession("localhost", DefaultSettings())
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 
 	h := func(*Session) {}
-	prevlen := len(s.endHandlers)
+	prevlen := len(s.onFinish)
 
-	s.AddEndHandler(h)
-	assert.Equal(t, prevlen+1, len(s.endHandlers))
+	s.AddOnFinish(h)
+	assert.Equal(t, prevlen+1, len(s.onFinish))
 }
 
 // TODO(how): Implement this test when we refactor the code to use interfaces allowing us to mock
@@ -187,7 +187,7 @@ func TestSessionHandleRawPacket1(t *testing.T) {
 		ch <- true
 	}
 
-	s.AddRtHandler(rth)
+	s.AddOnRecv(rth)
 	s.handleRawPacket(pkt)
 	assert.Empty(t, s.finishReqs)
 	assert.NotEmpty(t, ch)
@@ -212,7 +212,7 @@ func TestSessionHandleRawPacket2(t *testing.T) {
 		ch <- true
 	}
 
-	s.AddRtHandler(rth)
+	s.AddOnRecv(rth)
 	s.handleRawPacket(pkt)
 	assert.NotEmpty(t, ch)
 	assert.Empty(t, s.finishReqs)
@@ -231,7 +231,7 @@ func TestSessionHandleFinishRequest(t *testing.T) {
 		ch <- true
 	}
 
-	s.AddEndHandler(eh)
+	s.AddOnFinish(eh)
 	var wg sync.WaitGroup
 	s.handleFinishRequest(nil, &wg)
 
@@ -408,7 +408,7 @@ func TestSessionProcessRoundTrip1(t *testing.T) {
 		assert.Equal(t, Replied, rt.Res)
 		ch <- true
 	}
-	s.AddRtHandler(rth)
+	s.AddOnRecv(rth)
 
 	prevlen := len(s.Stats.RTTs)
 	prevrecv := s.Stats.TotalRecv
@@ -432,7 +432,7 @@ func TestSessionProcessRoundTrip2(t *testing.T) {
 		assert.Equal(t, TimedOut, rt.Res)
 		ch <- true
 	}
-	s.AddRtHandler(rth)
+	s.AddOnRecv(rth)
 
 	prevlen := len(s.Stats.RTTs)
 	prevrecv := s.Stats.TotalRecv
@@ -456,7 +456,7 @@ func TestSessionProcessRoundTrip3(t *testing.T) {
 		assert.Equal(t, TTLExpired, rt.Res)
 		ch <- true
 	}
-	s.AddRtHandler(rth)
+	s.AddOnRecv(rth)
 
 	prevlen := len(s.Stats.RTTs)
 	prevrecv := s.Stats.TotalRecv
