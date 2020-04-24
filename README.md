@@ -90,7 +90,7 @@ or you can also run the CLI in the privileged mode, either as a privileged user 
 setcap CAP_NET_RAW+ep [binary path]
 ```
 
-On Windows, you must use the privileged mode.
+On Windows, it is not currently possible to run the program because one of the used methods of a class used to receive TTL is not implemented in the `golang/net` package, this will be resolved soon.
 
 **Warning:** If you use the non-privileged mode, it is not possible to receive Time Exceeded ICMP messages, meaning that
 a request that exceeded its time to live will never receive a response, timing out instead.
