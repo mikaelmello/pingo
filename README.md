@@ -1,6 +1,6 @@
 # pingo
 
-**pingo** is, currently, a simple CLI interface with the intent to test the reachability of a host on an IP network. Quite similar to [ping](https://en.wikipedia.org/wiki/Ping_(networking_utility)).
+**pingo** is, currently, a simple CLI application with the intent to test the reachability of a host on an IP network. Quite similar to [ping](https://en.wikipedia.org/wiki/Ping_(networking_utility)).
 
 Between **cpping** and **pingo**, I had to learn Go to claim the latter. Learning the best ways to use the language's features everytime I tried one and it didn't quite work was a great experience (and I'm quite honest here).
 
